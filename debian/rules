@@ -1,0 +1,86 @@
+#!/usr/bin/make -f
+
+package = dialog
+docdir = debian/tmp/usr/share/doc/$(package)
+examples = yesno msgbox inputbox checklist menubox menubox1 menubox2 \
+	infobox textbox radiolist gauge gauge2 \
+	msgbox1 msgbox2 inputbox1 inputbox2 inputbox3 calendar timebox \
+	calendar2 fselect2 infobox2 infobox3 infobox4 menubox3 menubox4 \
+	menubox5 password textbox2 timebox2 yesno2 yesno3 \
+	fselect fselect1 inputbox4 inputbox5 \
+	inputmenu1 inputmenu2 inputmenu3 inputmenu4 \
+	checklist-utf8 msgbox4-utf8 inputbox6-utf8 menubox-utf8 msgbox4-eucjp \
+	form1 form2 gauge3 inputbox7 \
+	calendar-stdout calendar2-stdout gauge0-input-fd \
+	fselect-stdout fselect1-stdout fselect2-stdout \
+	password1 password2 inputmenu-stdout \
+	timebox-stdout timebox2-stdout \
+	menubox10 checklist10 radiolist10 \
+	pause
+
+CC = gcc
+CFLAGS = -g -Wall
+INSTALL_PROGRAM = install
+STRIP = true
+
+ifeq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+  CFLAGS += -O2
+endif
+ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
+  INSTALL_PROGRAM += -s
+  STRIP = strip --strip-debug
+endif
+
+build:
+	$(checkdir)
+	CC="$(CC)" CFLAGS="$(CFLAGS)" ./configure --prefix=/usr \
+		--enable-nls --with-ncursesw
+	$(MAKE)
+	touch build
+
+clean:
+	$(checkdir)
+	rm -f build
+	-$(MAKE) distclean
+	rm -f `find . -name "*~"`
+	rm -rf debian/tmp debian/files* core debian/substvars
+
+binary-indep: checkroot build
+	$(checkdir)
+
+binary-arch: checkroot build
+	$(checkdir)
+	rm -rf debian/tmp
+	install -d debian/tmp/DEBIAN $(docdir)/examples
+	cd debian/tmp && install -d usr/bin usr/man/man1 usr/lib/perl5
+	$(MAKE) install install-lib DESTDIR=`pwd`/debian/tmp prefix=/usr \
+		INSTALL_PROGRAM="$(INSTALL_PROGRAM)"
+	cp -p dialog.pl debian/tmp/usr/lib/perl5
+	cp -p debian/changelog $(docdir)/changelog.Debian
+	cp -p README CHANGES debian/copyright $(docdir)
+	cd samples && cp -p $(examples) ../$(docdir)/examples
+	chmod -R u+w $(docdir) debian/tmp/usr/lib
+	cd $(docdir) && gzip -9 CHANGES changelog.Debian
+	ln -s CHANGES.gz $(docdir)/changelog.gz
+	gzip -r9 debian/tmp/usr/man
+	cd debian/tmp && mv usr/man usr/share
+	$(STRIP) debian/tmp/usr/lib/libdialog.a
+	dpkg-shlibdeps dialog
+	dpkg-gencontrol -isp
+	cd debian/tmp && \
+		md5sum `find * -type f ! -regex "DEBIAN/.*"` > DEBIAN/md5sums
+	chown -R root:root debian/tmp
+	chmod -R go=rX debian/tmp
+	dpkg --build debian/tmp ..
+
+define checkdir
+	test -f debian/rules
+endef
+
+binary: binary-indep binary-arch
+
+checkroot:
+	$(checkdir)
+	test root = "`whoami`"
+
+.PHONY: binary binary-arch binary-indep clean checkroot
