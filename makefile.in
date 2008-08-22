@@ -112,7 +112,7 @@ $(LIB) : $(LIB_OBJECT)
 	$(RANLIB) $@
 
 dialog$x : $(LIB) dialog$o @INTLDIR_MAKE@ @INTLLIBS@
-	$(LINK) -o $@ dialog$o -L. -ldialog $(LDFLAGS) $(LIBS)
+	$(LINK) $(CFLAGS) -o $@ dialog$o -L. -ldialog $(LDFLAGS) $(LIBS)
 
 clean	\
 distclean \
