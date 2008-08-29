@@ -1,4 +1,10 @@
-dialog (1.0-20060101-3.tgz2build) unstable; urgency=low
+dialog (1.0-20060101-4.tgz2build) syslogng30; urgency=low
+
+  * force the use of ncurses
+
+ -- ZorpOS Maintainers <zorpos@balabit.com>  Thu, 28 Aug 2008 15:06:39 +0200
+
+dialog (1.0-20060101-3.tgz2build) syslogng30; urgency=low
 
   * Increased debian version. 
 

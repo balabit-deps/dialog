@@ -1,7 +1,7 @@
 #!/usr/local/bin/make -f                                                                                                                                           
 STAMPDIR=tgz2build/stamps
 
-CONFIGURE_OPTS := --prefix=/dialog
+CONFIGURE_OPTS := --prefix=/dialog --with-ncurses
 
 all: binary
 
@@ -26,7 +26,7 @@ $(STAMPDIR)/stamp-build: configure
 install: $(STAMPDIR)/stamp-install
 $(STAMPDIR)/stamp-install: build
 	rm -rf $(ZBS_STAGE_DIR) || true
-	make install DESTDIR=$(ZBS_STAGE_DIR)
+	$(MAKE) install DESTDIR=$(ZBS_STAGE_DIR)
 	touch $@
 clean:
 	rm -rf tgz2build/stamps || true
