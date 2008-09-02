@@ -2,7 +2,14 @@
 STAMPDIR=tgz2build/stamps
 
 CONFIGURE_OPTS := --prefix=/dialog --with-ncurses
-LFLAGS += -static
+LDFLAGS_STATIC=$(LDFLAGS) -static
+CONFIGURE_CMD=LDFLAGS="$(LDFLAGS_STATIC)" ./configure $(CONFIGURE_OPTS)
+
+ifneq (,$(findstring solaris,$(ZBS_DIST)))
+    LIBS="-Wl,-Bstatic -L/usr/local/lib -lncurses -Wl,-Bdynamic -L/usr/lib -lc"
+    CONFIGURE_CMD=LIBS=$(LIBS) ./configure $(CONFIGURE_OPTS)
+endif
+
 all: binary
 
 binary: setup configure build install
@@ -13,10 +20,9 @@ $(STAMPDIR)/stamp-setup:
 	touch $@
 
 configure: $(STAMPDIR)/stamp-configure
-	LDFLAGS=$(LDFLAGS) ./configure $(CONFIGURE_OPTS)
-	touch $@
-
 $(STAMPDIR)/stamp-configure: setup
+	$(CONFIGURE_CMD)
+	touch $@
 
 build:  $(STAMPDIR)/stamp-build
 $(STAMPDIR)/stamp-build: configure
