@@ -1,7 +1,7 @@
 #!/usr/local/bin/make -f                                                                                                                                           
 STAMPDIR=tgz2build/stamps
 
-CONFIGURE_OPTS := --prefix=/dialog --with-ncurses
+CONFIGURE_OPTS := --prefix=/dialog --with-ncurses --disable-xterm
 LDFLAGS_STATIC=$(LDFLAGS) -static
 CONFIGURE_CMD=LDFLAGS="$(LDFLAGS_STATIC)" ./configure $(CONFIGURE_OPTS)
 
