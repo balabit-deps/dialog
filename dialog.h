@@ -617,8 +617,11 @@ typedef struct mseRegion {
     int mode, step_x, step_y;
     struct mseRegion *next;
 } mseRegion;
+/*
+ * Disabled mouse support, because in most of the cases can't link statically.
+ */
 
-#if defined(NCURSES_MOUSE_VERSION)
+#if 0 //defined(NCURSES_MOUSE_VERSION)
 
 #define	mouse_open() mousemask(BUTTON1_CLICKED, (mmask_t *) 0)
 #define	mouse_close() mousemask(0, (mmask_t *) 0)

@@ -2,7 +2,7 @@
 STAMPDIR=tgz2build/stamps
 
 CONFIGURE_OPTS := --prefix=/dialog --with-ncurses
-
+LFLAGS += -static
 all: binary
 
 binary: setup configure build install
@@ -13,7 +13,7 @@ $(STAMPDIR)/stamp-setup:
 	touch $@
 
 configure: $(STAMPDIR)/stamp-configure
-	./configure $(CONFIGURE_OPTS)
+	LDFLAGS=$(LDFLAGS) ./configure $(CONFIGURE_OPTS)
 	touch $@
 
 $(STAMPDIR)/stamp-configure: setup

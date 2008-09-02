@@ -1,3 +1,10 @@
+dialog (1.0-20060101-5.tgz2build) syslogng30; urgency=low
+
+  * Forced static build with -static parameter in the rules file.
+  * Disabled mouse support in dialog.h
+
+ -- ZorpOS Maintainers <zorpos@balabit.com>  Mon, 01 Sep 2008 17:04:07 +0200
+
 dialog (1.0-20060101-4.tgz2build) syslogng30; urgency=low
 
   * force the use of ncurses
