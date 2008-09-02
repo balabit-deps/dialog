@@ -1,3 +1,10 @@
+dialog (1.0-20060101-6.tgz2build) unixinstall10; urgency=low
+
+  * Modified rules file for system specific static linking.
+  * Use the unixinstall10 tag.
+
+ -- ZorpOS Maintainers <zorpos@balabit.com>  Tue, 02 Sep 2008 14:42:02 +0200
+
 dialog (1.0-20060101-5.tgz2build) syslogng30; urgency=low
 
   * Forced static build with -static parameter in the rules file.
