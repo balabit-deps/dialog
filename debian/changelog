@@ -1,3 +1,9 @@
+dialog (1.0-20060101-8.tgz2build) unixinstall10; urgency=low
+
+  * Added terminfo database generation. 
+
+ -- ZorpOS Maintainers <zorpos@balabit.com>  Thu, 04 Sep 2008 11:58:34 +0200
+
 dialog (1.0-20060101-7.tgz2build) unixinstall10; urgency=low
 
   * Disabled xterm in configure.

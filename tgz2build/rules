@@ -33,6 +33,9 @@ install: $(STAMPDIR)/stamp-install
 $(STAMPDIR)/stamp-install: build
 	rm -rf $(ZBS_STAGE_DIR) || true
 	$(MAKE) install DESTDIR=$(ZBS_STAGE_DIR)
+	mkdir -p $(ZBS_STAGE_DIR)/dialog/terminfo
+	cd terminfo && TERMINFO=$(ZBS_STAGE_DIR)/dialog/terminfo \
+		tic terminfo.src
 	touch $@
 clean:
 	rm -rf tgz2build/stamps || true
