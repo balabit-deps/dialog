@@ -1,0 +1,22 @@
+#!/bin/sh -e
+
+cmd=$1
+shift
+case "$cmd" in
+  build-exclude-list|dist-exclude-list|prepare-dist)
+    ;;
+  bootstrap)
+    echo "No need to bootstrap"
+    ;;
+  configure|make)
+    echo "ZWA local compilation not supported, please use the system supplied gettext"
+    exit 0
+    ;;
+  *)
+    echo "Unknown command: $cmd"
+    exit 1
+    ;;
+esac
+exit 0
+
+# vim: ts=2 sw=2 expandtab
