@@ -1,3 +1,9 @@
+dialog (1.0-20060101-10.tgz2build) syslogngdeps10; urgency=low
+
+  * Added Tru64 builder support.
+
+ -- Tamas Pal <folti@balabit.com>  Wed, 16 Dec 2009 18:38:46 +0100
+
 dialog (1.0-20060101-9.tgz2build) syslogngdeps10; urgency=low
 
   * Added support for HP-UX 11i v2.
