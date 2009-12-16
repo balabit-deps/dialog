@@ -1,3 +1,9 @@
+dialog (1.0-20060101-9.tgz2build) syslogngdeps10; urgency=low
+
+  * Added support for HP-UX 11i v2.
+
+ -- Tamas Pal <folti@balabit.com>  Mon, 23 Nov 2009 17:16:48 +0100
+
 dialog (1.0-20060101-8.tgz2build) unixinstall10; urgency=low
 
   * Added terminfo database generation. 
