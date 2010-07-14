@@ -1,13 +1,16 @@
 #!/usr/local/bin/make -f                                                                                                                                           
 STAMPDIR=tgz2build/stamps
 
-ifneq (,$(findstring tru64,$(ZBS_DIST)))
-CONFIGURE_OPTS := --prefix=/dialog --disable-xterm
-else
 CONFIGURE_OPTS := --prefix=/dialog --with-ncurses --disable-xterm
+ifneq (,$(filter tru64-5.1b aix-6.1,$(ZBS_DIST)))
+CONFIGURE_OPTS := --prefix=/dialog --disable-xterm
 endif
 
 LDFLAGS_STATIC=$(LDFLAGS) -static
+ifneq (,$(findstring aix-6.1,$(ZBS_DIST)))
+LDFLAGS_STATIC=$(LDFLAGS) -static-libgcc
+endif
+
 CONFIGURE_CMD=LDFLAGS="$(LDFLAGS_STATIC)" ./configure $(CONFIGURE_OPTS)
 
 ifneq (,$(findstring solaris,$(ZBS_DIST)))
