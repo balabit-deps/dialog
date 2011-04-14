@@ -1,3 +1,10 @@
+dialog (1.0-20060101-10.syslogng41.1) syslogngdeps30; urgency=low
+
+  * re-released for syslog-ng-deps-3.0
+  * added fixes to build on AIX 6.1 and Solaris/Sparc64.
+
+ -- Tamas Pal <folti@balabit.com>  Thu, 14 Apr 2011 18:08:38 +0200
+
 dialog (1.0-20060101-10.tgz2build) syslogngdeps10; urgency=low
 
   * Added Tru64 builder support.
