@@ -17,8 +17,8 @@ ifneq (,$(findstring solaris,$(ZBS_DIST)))
     LIBS="-Wl,-Bstatic -L/usr/local/lib -lncurses -Wl,-Bdynamic -L/usr/lib -lc"
     CONFIGURE_CMD=LIBS=$(LIBS) ./configure $(CONFIGURE_OPTS)
 
-ifneq (,$(findstring sparc64,$(ZBS_ARCH)))
-	# ncurses and other dependencies are 32 bit libs on soalris, so we'll make
+ifneq (,$(filter amd64 sparc64,$(ZBS_ARCH)))
+	# ncurses and other dependencies are 32 bit libs on solaris, so we'll make
 	# 32 bit binaries and lie about it to avoid confusion - Folti
 	LDFLAGS_2=$(subst -m64 ,,$(LDFLAGS))
 	CFLAGS_2=$(subst -m64 ,,$(CFLAGS))
