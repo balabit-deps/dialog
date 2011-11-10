@@ -1,14 +1,13 @@
 /*
- * $Id: inputstr.c,v 1.48 2005/12/20 00:22:36 tom Exp $
+ *  $Id: inputstr.c,v 1.70 2011/10/20 23:42:49 tom Exp $
  *
  *  inputstr.c -- functions for input/display of a string
  *
- * Copyright 2000-2004,2005	Thomas E. Dickey
+ *  Copyright 2000-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -37,19 +36,31 @@
 #undef HAVE_TSEARCH
 #endif
 
+#ifdef NEED_WCHAR_H
+#include <wchar.h>
+#endif
+
+#if defined(USE_WIDE_CURSES)
+#define USE_CACHING 1
+#elif defined(HAVE_XDIALOG)
+#define USE_CACHING 1		/* editbox really needs caching! */
+#else
+#define USE_CACHING 0
+#endif
+
 typedef struct _cache {
     struct _cache *next;
-#ifdef USE_WIDE_CURSES
+#if USE_CACHING
     struct _cache *cache_at;	/* unique: associate caches by CACHE */
     const char *string_at;	/* unique: associate caches by char* */
 #endif
-    unsigned s_len;		/* strlen(string) - we add 1 for EOS */
-    unsigned i_len;		/* length(list) - we add 1 for EOS */
+    size_t s_len;		/* strlen(string) - we add 1 for EOS */
+    size_t i_len;		/* length(list) - we add 1 for EOS */
     char *string;		/* a copy of the last-processed string */
     int *list;			/* indices into the string */
 } CACHE;
 
-#ifdef USE_WIDE_CURSES
+#if USE_CACHING
 #define SAME_CACHE(c,s,l) (c->string != 0 && memcmp(c->string,s,l) == 0)
 
 static CACHE *cache_list;
@@ -84,9 +95,9 @@ compare_cache(const void *a, const void *b)
     const CACHE *p = (const CACHE *) a;
     const CACHE *q = (const CACHE *) b;
     int result = 0;
-    result = p->cache_at - q->cache_at;
+    result = (int) (p->cache_at - q->cache_at);
     if (result == 0)
-	result = p->string_at - q->string_at;
+	result = (int) (p->string_at - q->string_at);
     return result;
 }
 #endif
@@ -125,7 +136,7 @@ make_cache(CACHE * cache, const char *string)
 {
     CACHE *p;
 
-    p = (CACHE *) calloc(1, sizeof(CACHE));
+    p = dlg_calloc(CACHE, 1);
     assert_ptr(p, "load_cache");
     p->next = cache_list;
     cache_list = p;
@@ -176,20 +187,20 @@ static bool
 same_cache2(CACHE * cache, const char *string, unsigned i_len)
 {
     unsigned need;
-    unsigned s_len = strlen(string);
+    size_t s_len = strlen(string);
 
     if (cache->s_len != 0
 	&& cache->s_len >= s_len
 	&& cache->list != 0
-	&& SAME_CACHE(cache, string, s_len)) {
+	&& SAME_CACHE(cache, string, (size_t) s_len)) {
 	return TRUE;
     }
 
-    need = sizeof(int *) * (i_len + 1);
+    need = (i_len + 1);
     if (cache->list == 0) {
-	cache->list = malloc(need);
+	cache->list = dlg_malloc(int, need);
     } else if (cache->i_len < i_len) {
-	cache->list = realloc(cache->list, need);
+	cache->list = dlg_realloc(int, need, cache->list);
     }
     cache->i_len = i_len;
 
@@ -211,12 +222,12 @@ same_cache2(CACHE * cache, const char *string, unsigned i_len)
  * string and its associated length.
  */
 static bool
-same_cache1(CACHE * cache, const char *string, unsigned i_len)
+same_cache1(CACHE * cache, const char *string, size_t i_len)
 {
-    unsigned s_len = strlen(string);
+    size_t s_len = strlen(string);
 
     if (cache->s_len == s_len
-	&& SAME_CACHE(cache, string, s_len)) {
+	&& SAME_CACHE(cache, string, (size_t) s_len)) {
 	return TRUE;
     }
 
@@ -232,7 +243,7 @@ same_cache1(CACHE * cache, const char *string, unsigned i_len)
 
     return FALSE;
 }
-#endif /* USE_WIDE_CURSES */
+#endif /* USE_CACHING */
 
 /*
  * Counts the number of bytes that make up complete wide-characters, up to byte
@@ -250,28 +261,26 @@ dlg_count_wcbytes(const char *string, size_t len)
 	load_cache(&cache, string);
 	if (!same_cache1(&cache, string, len)) {
 	    while (len != 0) {
-		int part = 0;
-		int code = 0;
+		size_t code = 0;
 		const char *src = cache.string;
 		mbstate_t state;
-		int save = cache.string[len];
+		char save = cache.string[len];
 
 		cache.string[len] = '\0';
 		memset(&state, 0, sizeof(state));
 		code = mbsrtowcs((wchar_t *) 0, &src, len, &state);
 		cache.string[len] = save;
-		if (code >= 0) {
+		if ((int) code >= 0) {
 		    break;
 		}
-		++part;
 		--len;
 	    }
 	    cache.i_len = len;
 	    save_cache(&cache, string);
 	}
-	result = cache.i_len;
+	result = (int) cache.i_len;
     } else {
-	result = len;
+	result = (int) len;
     }
     return result;
 }
@@ -295,23 +304,23 @@ dlg_count_wchars(const char *string)
 	    const char *src = cache.string;
 	    mbstate_t state;
 	    int part = dlg_count_wcbytes(cache.string, len);
-	    int save = cache.string[part];
-	    int code;
-	    wchar_t *temp = calloc(len + 1, sizeof(wchar_t));
+	    char save = cache.string[part];
+	    size_t code;
+	    wchar_t *temp = dlg_calloc(wchar_t, len + 1);
 
 	    cache.string[part] = '\0';
 	    memset(&state, 0, sizeof(state));
-	    code = mbsrtowcs(temp, &src, part, &state);
-	    cache.i_len = (code >= 0) ? wcslen(temp) : 0;
+	    code = mbsrtowcs(temp, &src, (size_t) part, &state);
+	    cache.i_len = ((int) code >= 0) ? wcslen(temp) : 0;
 	    cache.string[part] = save;
 	    free(temp);
 	    save_cache(&cache, string);
 	}
-	result = cache.i_len;
+	result = (int) cache.i_len;
     } else
 #endif /* USE_WIDE_CURSES */
     {
-	result = strlen(string);
+	result = (int) strlen(string);
     }
     return result;
 }
@@ -324,7 +333,7 @@ const int *
 dlg_index_wchars(const char *string)
 {
     static CACHE cache;
-    unsigned len = dlg_count_wchars(string);
+    unsigned len = (unsigned) dlg_count_wchars(string);
     unsigned inx;
 
     load_cache(&cache, string);
@@ -338,7 +347,7 @@ dlg_index_wchars(const char *string)
 		mbstate_t state;
 		int width;
 		memset(&state, 0, sizeof(state));
-		width = mbrlen(current, strlen(current), &state);
+		width = (int) mbrlen(current, strlen(current), &state);
 		if (width <= 0)
 		    width = 1;	/* FIXME: what if we have a control-char? */
 		current += width;
@@ -347,7 +356,7 @@ dlg_index_wchars(const char *string)
 #endif /* USE_WIDE_CURSES */
 	    {
 		(void) current;
-		cache.list[inx] = inx;
+		cache.list[inx] = (int) inx;
 	    }
 	}
 	save_cache(&cache, string);
@@ -359,7 +368,7 @@ dlg_index_wchars(const char *string)
  * Given the character-offset to find in the list, return the corresponding
  * array index.
  */
-static int
+int
 dlg_find_index(const int *list, int limit, int to_find)
 {
     int result;
@@ -379,7 +388,7 @@ const int *
 dlg_index_columns(const char *string)
 {
     static CACHE cache;
-    unsigned len = dlg_count_wchars(string);
+    unsigned len = (unsigned) dlg_count_wchars(string);
     unsigned inx;
 
     load_cache(&cache, string);
@@ -392,35 +401,54 @@ dlg_index_columns(const char *string)
 	    mbstate_t state;
 
 	    for (inx = 0; inx < len; ++inx) {
-		wchar_t temp;
-		int check;
+		wchar_t temp[2];
+		size_t check;
 		int result;
 
-		memset(&state, 0, sizeof(state));
-		check = mbrtowc(&temp, string + inx_wchars[inx], num_bytes -
-				inx_wchars[inx], &state);
-		if (check <= 0)
-		    result = 1;
-		else
-		    result = wcwidth(temp);
-		if (result < 0) {
-		    cchar_t temp2;
-		    setcchar(&temp2, &temp, 0, 0, 0);
-		    result = wcslen(wunctrl(&temp2));
+		if (string[inx_wchars[inx]] == TAB) {
+		    result = ((cache.list[inx] | 7) + 1) - cache.list[inx];
+		} else {
+		    memset(&state, 0, sizeof(state));
+		    memset(temp, 0, sizeof(temp));
+		    check = mbrtowc(temp,
+				    string + inx_wchars[inx],
+				    num_bytes - (size_t) inx_wchars[inx],
+				    &state);
+		    if ((int) check <= 0) {
+			result = 1;
+		    } else {
+			result = wcwidth(temp[0]);
+		    }
+		    if (result < 0) {
+			const wchar_t *printable;
+			cchar_t temp2, *temp2p = &temp2;
+			setcchar(temp2p, temp, 0, 0, 0);
+			printable = wunctrl(temp2p);
+			result = printable ? (int) wcslen(printable) : 1;
+		    }
 		}
 		cache.list[inx + 1] = result;
-		if (inx > 0)
+		if (inx != 0)
 		    cache.list[inx + 1] += cache.list[inx];
 	    }
 	} else
 #endif /* USE_WIDE_CURSES */
 	{
 	    for (inx = 0; inx < len; ++inx) {
-		cache.list[inx + 1] = (isprint(UCH(string[inx]))
-				       ? 1
-				       : strlen(unctrl(UCH(string[inx]))));
-		if (string[inx] == '\n')
+		chtype ch = UCH(string[inx]);
+
+		if (ch == TAB)
+		    cache.list[inx + 1] =
+			((cache.list[inx] | 7) + 1) - cache.list[inx];
+		else if (isprint(ch))
 		    cache.list[inx + 1] = 1;
+		else {
+		    const char *printable;
+		    printable = unctrl(ch);
+		    cache.list[inx + 1] = (printable
+					   ? (int) strlen(printable)
+					   : 1);
+		}
 		if (inx != 0)
 		    cache.list[inx + 1] += cache.list[inx];
 	    }
@@ -443,7 +471,7 @@ dlg_count_columns(const char *string)
 	const int *cols = dlg_index_columns(string);
 	result = cols[limit];
     } else {
-	result = strlen(string);
+	result = (int) strlen(string);
     }
     return result;
 }
@@ -472,15 +500,12 @@ bool
 dlg_edit_string(char *string, int *chr_offset, int key, int fkey, bool force)
 {
     int i;
-    int len = strlen(string);
+    int len = (int) strlen(string);
     int limit = dlg_count_wchars(string);
     const int *indx = dlg_index_wchars(string);
     int offset = dlg_find_index(indx, limit, *chr_offset);
-    int max_len = MAX_LEN;
+    int max_len = dlg_max_input(MAX_LEN);
     bool edit = TRUE;
-
-    if (dialog_vars.max_input != 0 && dialog_vars.max_input < MAX_LEN)
-	max_len = dialog_vars.max_input;
 
     /* transform editing characters into equivalent function-keys */
     if (!fkey) {
@@ -565,8 +590,13 @@ dlg_edit_string(char *string, int *chr_offset, int key, int fkey, bool force)
 	    edit = 0;
 	    break;
 #endif
+	case DLGK_GRID_UP:
+	case DLGK_GRID_DOWN:
 	case DLGK_FIELD_NEXT:
 	case DLGK_FIELD_PREV:
+	    edit = 0;
+	    break;
+	case ERR:
 	    edit = 0;
 	    break;
 	default:
@@ -574,13 +604,13 @@ dlg_edit_string(char *string, int *chr_offset, int key, int fkey, bool force)
 	    break;
 	}
     } else {
-	if (key == ESC || key == TAB) {
+	if (key == ESC || key == ERR) {
 	    edit = 0;
 	} else {
 	    if (len < max_len) {
 		for (i = ++len; i > *chr_offset; i--)
 		    string[i] = string[i - 1];
-		string[*chr_offset] = key;
+		string[*chr_offset] = (char) key;
 		*chr_offset += 1;
 	    } else {
 		(void) beep();
@@ -668,16 +698,22 @@ dlg_show_string(WINDOW *win,
 
 	compute_edit_offset(string, chr_offset, x_last, &input_x, &scrollamt);
 
-	wattrset(win, attr);
+	(void) wattrset(win, attr);
 	(void) wmove(win, y_base, x_base);
 	for (i = scrollamt, k = 0; i < limit && k < x_last; ++i) {
 	    int check = cols[i + 1] - cols[scrollamt];
 	    if (check <= x_last) {
 		for (j = indx[i]; j < indx[i + 1]; ++j) {
-		    if (hidden && dialog_vars.insecure)
+		    chtype ch = UCH(string[j]);
+		    if (hidden && dialog_vars.insecure) {
 			waddch(win, '*');
-		    else
-			waddch(win, CharOf(string[j]));
+		    } else if (ch == TAB) {
+			int count = cols[i + 1] - cols[i];
+			while (--count >= 0)
+			    waddch(win, ' ');
+		    } else {
+			waddch(win, ch);
+		    }
 		}
 		k = check;
 	    } else {
@@ -695,6 +731,7 @@ dlg_show_string(WINDOW *win,
 void
 _dlg_inputstr_leaks(void)
 {
+#if USE_CACHING
     while (cache_list != 0) {
 	CACHE *next = cache_list->next;
 #ifdef HAVE_TSEARCH
@@ -707,5 +744,6 @@ _dlg_inputstr_leaks(void)
 	free(cache_list);
 	cache_list = next;
     }
+#endif /* USE_CACHING */
 }
-#endif
+#endif /* NO_LEAKS */

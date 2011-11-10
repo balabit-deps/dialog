@@ -1,14 +1,13 @@
 /*
- *  $Id: tailbox.c,v 1.48 2005/12/07 00:39:45 tom Exp $
+ *  $Id: tailbox.c,v 1.67 2011/10/15 12:43:07 tom Exp $
  *
  *  tailbox.c -- implements the tail box
  *
- *  Copyright 2000-2004,2005	Thomas E. Dickey
+ *  Copyright 2000-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,6 +26,7 @@
 
 #include <dialog.h>
 #include <dlg_keys.h>
+#include <sys/stat.h>
 
 typedef struct {
     DIALOG_CALLBACK obj;
@@ -35,6 +35,7 @@ typedef struct {
     int hscroll;
     int old_hscroll;
     char line[MAX_LEN + 1];
+    off_t last_pos;
 } MY_OBJ;
 
 /*
@@ -61,7 +62,7 @@ get_line(MY_OBJ * obj)
 		}
 	    } else {
 		if (col >= 0)
-		    obj->line[col] = ch;
+		    obj->line[col] = (char) ch;
 		++col;
 	    }
 	    if (col >= MAX_LEN)
@@ -95,6 +96,7 @@ print_line(MY_OBJ * obj, WINDOW *win, int row, int width)
 #endif
 
     getyx(win, y, x);
+    (void) y;
     /* Clear 'residue' of previous line */
     for (i = 0; i < width - x; i++)
 	(void) waddch(win, ' ');
@@ -107,14 +109,15 @@ static void
 last_lines(MY_OBJ * obj, int target)
 {
     FILE *fp = obj->obj.input;
-    int inx;
+    size_t inx;
     int count = 0;
     char buf[BUFSIZ + 1];
     size_t size_to_read;
-    size_t offset = 0;
+    size_t size_as_read;
+    long offset = 0;
     long fpos = 0;
 
-    if (fseek(fp, 0, SEEK_END) == -1
+    if (fseek(fp, 0L, SEEK_END) == -1
 	|| (fpos = ftell(fp)) < 0)
 	dlg_exiterr("Error moving file pointer in last_lines().");
 
@@ -122,23 +125,29 @@ last_lines(MY_OBJ * obj, int target)
 	++target;
 	for (;;) {
 	    if (fpos >= BUFSIZ) {
-		size_to_read = (size_t) BUFSIZ;
+		size_to_read = BUFSIZ;
 	    } else {
-		size_to_read = ((size_t) fpos);
+		size_to_read = (size_t) fpos;
 	    }
-	    fpos -= size_to_read;
+	    fpos = fpos - (long) size_to_read;
 	    if (fseek(fp, fpos, SEEK_SET) == -1)
 		dlg_exiterr("Error moving file pointer in last_lines().");
-	    (void) fread(buf, size_to_read, 1, fp);
+	    size_as_read = fread(buf, sizeof(char), size_to_read, fp);
 	    if (ferror(fp))
 		dlg_exiterr("Error reading file in last_lines().");
 
-	    offset += size_to_read;
-	    for (inx = size_to_read - 1; inx >= 0; --inx) {
+	    if (size_as_read == 0) {
+		fpos = 0;
+		offset = 0;
+		break;
+	    }
+
+	    offset += (long) size_as_read;
+	    for (inx = size_as_read - 1; inx != 0; --inx) {
 		if (buf[inx] == '\n') {
 		    if (++count > target)
 			break;
-		    offset = inx + 1;
+		    offset = (long) (inx + 1);
 		}
 	    }
 
@@ -182,13 +191,32 @@ print_last_page(MY_OBJ * obj)
 static void
 repaint_text(MY_OBJ * obj)
 {
+    FILE *fp = obj->obj.input;
     int cur_y, cur_x;
 
     getyx(obj->obj.win, cur_y, cur_x);
     obj->old_hscroll = obj->hscroll;
+
     print_last_page(obj);
+    obj->last_pos = ftell(fp);
+
     (void) wmove(obj->obj.win, cur_y, cur_x);	/* Restore cursor position */
     wrefresh(obj->obj.win);
+}
+
+static bool
+handle_input(DIALOG_CALLBACK * cb)
+{
+    MY_OBJ *obj = (MY_OBJ *) cb;
+    FILE *fp = obj->obj.input;
+    struct stat sb;
+
+    if (fstat(fileno(fp), &sb) == 0
+	&& sb.st_size != obj->last_pos) {
+	repaint_text(obj);
+    }
+
+    return TRUE;
 }
 
 static bool
@@ -224,13 +252,16 @@ handle_my_getc(DIALOG_CALLBACK * cb, int ch, int fkey, int *result)
 	    beep();
 	    break;
 	}
+	if ((obj->hscroll != obj->old_hscroll))
+	    repaint_text(obj);
     } else {
 	switch (ch) {
 	case ERR:
+	    clearerr(cb->input);
 	    ch = getc(cb->input);
 	    (void) ungetc(ch, cb->input);
-	    if ((ch != EOF) || (obj->hscroll != obj->old_hscroll)) {
-		repaint_text(obj);
+	    if (ch != EOF) {
+		handle_input(cb);
 	    }
 	    break;
 	case ESC:
@@ -254,6 +285,7 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_BEGIN,      '0' ),
 	DLG_KEYS_DATA( DLGK_BEGIN,      KEY_BEG ),
@@ -277,6 +309,7 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
     const char **buttons = 0;
     MY_OBJ *obj;
     FILE *fd;
+    int min_width = 12;
 
     /* Open input file for reading */
     if ((fd = fopen(file, "rb")) == NULL)
@@ -285,7 +318,7 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
 #ifdef KEY_RESIZE
   retry:
 #endif
-    dlg_auto_sizefile(title, file, &height, &width, 2, 12);
+    dlg_auto_sizefile(title, file, &height, &width, 2, min_width);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -304,12 +337,14 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
 			  y + MARGIN,
 			  x + MARGIN);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
+    dlg_draw_helpline(dialog, FALSE);
 
     if (!bg_task) {
 	buttons = dlg_exit_label();
+	dlg_button_layout(buttons, &min_width);
 	dlg_draw_buttons(dialog, height - (2 * MARGIN), 0, buttons, FALSE,
 			 FALSE, width);
     }
@@ -317,12 +352,13 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
     (void) wmove(dialog, thigh, (MARGIN + 1));
     (void) wnoutrefresh(dialog);
 
-    obj = (MY_OBJ *) calloc(1, sizeof(MY_OBJ));
+    obj = dlg_calloc(MY_OBJ, 1);
     assert_ptr(obj, "dialog_tailbox");
 
     obj->obj.input = fd;
     obj->obj.win = dialog;
     obj->obj.handle_getc = handle_my_getc;
+    obj->obj.handle_input = bg_task ? handle_input : 0;
     obj->obj.keep_bg = bg_task && dialog_vars.cant_kill;
     obj->obj.bg_task = bg_task;
     obj->text = text;
@@ -336,6 +372,7 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
     dlg_attr_clear(text, thigh, getmaxx(text), dialog_attr);
     repaint_text(obj);
 
+    dlg_trace_win(dialog);
     if (bg_task) {
 	result = DLG_EXIT_OK;
     } else {
@@ -352,6 +389,7 @@ dialog_tailbox(const char *title, const char *file, int height, int width, int b
 		dlg_del_window(dialog);
 		refresh();
 		dlg_mouse_free_regions();
+		dlg_button_layout(buttons, &min_width);
 		goto retry;
 	    }
 #endif

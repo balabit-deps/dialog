@@ -1,14 +1,13 @@
 /*
- *  $Id: inputbox.c,v 1.55 2005/12/06 20:33:19 tom Exp $
+ *  $Id: inputbox.c,v 1.73 2011/10/20 23:38:07 tom Exp $
  *
  *  inputbox.c -- implements the input box
  *
- *  Copyright 2000-2004,2005	Thomas E. Dickey
+ *  Copyright 2000-2010,2011 Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -30,6 +29,14 @@
 
 #define sTEXT -1
 
+#define NAVIGATE_BINDINGS \
+	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_DOWN ), \
+	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_RIGHT ), \
+	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	TAB ), \
+	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_BTAB ), \
+	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_LEFT ), \
+	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_UP )
+
 /*
  * Display a dialog box for entering a string
  */
@@ -39,14 +46,16 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
-	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
-	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_DOWN ),
-	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_RIGHT ),
-	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	TAB ),
-	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_BTAB ),
-	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_LEFT ),
-	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_UP ),
+	NAVIGATE_BINDINGS,
+	END_KEYS_BINDING
+    };
+    static DLG_KEYS_BINDING binding2[] = {
+	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
+	ENTERKEY_BINDINGS,
+	NAVIGATE_BINDINGS,
 	END_KEYS_BINDING
     };
     /* *INDENT-ON* */
@@ -55,6 +64,7 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
     int old_height = height;
     int old_width = width;
 #endif
+    int xorg, yorg;
     int x, y, box_y, box_x, box_width;
     int show_buttons;
     int col_offset = 0;
@@ -65,6 +75,7 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
     int first;
     char *input;
     WINDOW *dialog;
+    WINDOW *editor;
     char *prompt = dlg_strclone(cprompt);
     const char **buttons = dlg_ok_labels();
 
@@ -88,37 +99,46 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
 		      MIN(MAX(dlg_count_columns(init) + 7, 26),
 			  SCOLS - (dialog_vars.begin_set ?
 				   dialog_vars.begin_x : 0)));
+	chr_offset = (int) strlen(init);
     } else {
 	dlg_auto_size(title, prompt, &height, &width, 5, 26);
     }
+    dlg_button_layout(buttons, &width);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
-    x = dlg_box_x_ordinate(width);
-    y = dlg_box_y_ordinate(height);
+    xorg = dlg_box_x_ordinate(width);
+    yorg = dlg_box_y_ordinate(height);
 
-    dialog = dlg_new_window(height, width, y, x);
+    dialog = dlg_new_window(height, width, yorg, xorg);
     dlg_register_window(dialog, "inputbox", binding);
     dlg_register_buttons(dialog, "inputbox", buttons);
 
-    dlg_mouse_setbase(x, y);
+    dlg_mouse_setbase(xorg, yorg);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
 
-    wattrset(dialog, dialog_attr);
+    (void) wattrset(dialog, dialog_attr);
+    dlg_draw_helpline(dialog, FALSE);
     dlg_print_autowrap(dialog, prompt, height, width);
 
     /* Draw the input field box */
     box_width = width - 6;
     getyx(dialog, y, x);
+    (void) x;
     box_y = y + 2;
     box_x = (width - box_width) / 2;
     dlg_mouse_mkregion(y + 1, box_x - 1, 3, box_width + 2, 'i');
     dlg_draw_box(dialog, y + 1, box_x - 1, 3, box_width + 2,
-		 border_attr, dialog_attr);
+		 border_attr, border2_attr);
 
+    /* Make a window for the input-field, to associate bindings */
+    editor = dlg_sub_window(dialog, 1, box_width, yorg + box_y, xorg + box_x);
+    dlg_register_window(editor, "inputbox2", binding2);
+
+    dlg_trace_win(dialog);
     while (result == DLG_EXIT_UNKNOWN) {
 	int edit = 0;
 
@@ -133,7 +153,7 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
 	}
 
 	if (!first) {
-	    key = dlg_mouse_wgetch(dialog, &fkey);
+	    key = dlg_mouse_wgetch((state == sTEXT) ? editor : dialog, &fkey);
 	    if (dlg_result_key(key, fkey, &result))
 		break;
 	}
@@ -187,7 +207,7 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
 	    case ' ':		/* FIXME: conflict with inputstr.c */
 	    case DLGK_ENTER:
 		dlg_del_window(dialog);
-		result = (state >= 0) ? dlg_ok_buttoncode(state) : DLG_EXIT_OK;
+		result = (state >= 0) ? dlg_enter_buttoncode(state) : DLG_EXIT_OK;
 		break;
 #ifdef KEY_RESIZE
 	    case KEY_RESIZE:
@@ -200,7 +220,6 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
 		refresh();
 		dlg_mouse_free_regions();
 		goto retry;
-		break;
 #endif
 	    default:
 		beep();
@@ -211,6 +230,7 @@ dialog_inputbox(const char *title, const char *cprompt, int height, int width,
 	}
     }
 
+    dlg_unregister_window(editor);
     dlg_del_window(dialog);
     dlg_mouse_free_regions();
     free(prompt);

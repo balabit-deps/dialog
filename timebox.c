@@ -1,14 +1,13 @@
 /*
- * $Id: timebox.c,v 1.33 2005/12/06 20:33:19 tom Exp $
+ * $Id: timebox.c,v 1.49 2011/10/20 23:34:17 tom Exp $
  *
  *  timebox.c -- implements the timebox dialog
  *
- * Copyright 2001-2004,2005   Thomas E. Dickey
+ *  Copyright 2001-2010,2011   Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -83,9 +82,9 @@ draw_cell(BOX * data)
     dlg_draw_box(data->parent,
 		 data->y - MARGIN, data->x - MARGIN,
 		 data->height + (2 * MARGIN), data->width + (2 * MARGIN),
-		 menubox_border_attr, menubox_attr);
+		 menubox_border_attr, menubox_border2_attr);
 
-    wattrset(data->window, item_attr);
+    (void) wattrset(data->window, item_attr);
     wprintw(data->window, "%02d", data->value);
     return 0;
 }
@@ -98,6 +97,8 @@ init_object(BOX * data,
 	    int period, int value,
 	    int code)
 {
+    (void) code;
+
     data->parent = parent;
     data->x = x;
     data->y = y;
@@ -119,6 +120,17 @@ init_object(BOX * data,
     return 0;
 }
 
+static int
+CleanupResult(int code, WINDOW *dialog, char *prompt, DIALOG_VARS * save_vars)
+{
+    dlg_del_window(dialog);
+    dlg_mouse_free_regions();
+    free(prompt);
+    dlg_restore_vars(save_vars);
+
+    return code;
+}
+
 #define DrawObject(data) draw_cell(data)
 
 /*
@@ -136,6 +148,7 @@ dialog_timebox(const char *title,
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
 	DLG_KEYS_DATA( DLGK_DELETE_RIGHT,KEY_DC ),
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_ENTER,	' ' ),
 	DLG_KEYS_DATA( DLGK_FIELD_FIRST,KEY_HOME ),
@@ -148,9 +161,11 @@ dialog_timebox(const char *title,
 	DLG_KEYS_DATA( DLGK_FIELD_PREV, CHR_PREVIOUS ),
 	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_BTAB ),
 	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_LEFT ),
+	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  '+'),
 	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_DOWN),
 	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_NEXT),
 	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_NPAGE),
+	DLG_KEYS_DATA( DLGK_ITEM_PREV,  '-' ),
 	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_PPAGE ),
 	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_PREVIOUS ),
 	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_UP ),
@@ -169,13 +184,17 @@ dialog_timebox(const char *title,
     WINDOW *dialog;
     time_t now_time = time((time_t *) 0);
     struct tm current;
-    STATES state = dlg_defaultno_button();
+    int state = dlg_defaultno_button();
     const char **buttons = dlg_ok_labels();
     char *prompt = dlg_strclone(subtitle);
     char buffer[MAX_LEN];
+    DIALOG_VARS save_vars;
 
     now_time = time((time_t *) 0);
     current = *localtime(&now_time);
+
+    dlg_save_vars(&save_vars);
+    dialog_vars.separate_output = TRUE;
 
     dlg_does_output();
 
@@ -194,14 +213,20 @@ dialog_timebox(const char *title,
     dialog = dlg_new_window(height, width,
 			    dlg_box_y_ordinate(height),
 			    dlg_box_x_ordinate(width));
+
+    if (hour >= 24 || minute >= 60 || second >= 60) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
+
     dlg_register_window(dialog, "timebox", binding);
     dlg_register_buttons(dialog, "timebox", buttons);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
+    dlg_draw_helpline(dialog, FALSE);
 
-    wattrset(dialog, dialog_attr);
+    (void) wattrset(dialog, dialog_attr);
     dlg_print_autowrap(dialog, prompt, height, width);
 
     /* compute positions of hour, month and year boxes */
@@ -218,8 +243,9 @@ dialog_timebox(const char *title,
 		    24,
 		    hour >= 0 ? hour : current.tm_hour,
 		    'H') < 0
-	|| DrawObject(&hr_box) < 0)
-	return -1;
+	|| DrawObject(&hr_box) < 0) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
 
     mvwprintw(dialog, hr_box.y, hr_box.x + ONE_WIDE + MARGIN, ":");
     if (init_object(&mn_box,
@@ -231,8 +257,9 @@ dialog_timebox(const char *title,
 		    60,
 		    minute >= 0 ? minute : current.tm_min,
 		    'M') < 0
-	|| DrawObject(&mn_box) < 0)
-	return -1;
+	|| DrawObject(&mn_box) < 0) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
 
     mvwprintw(dialog, mn_box.y, mn_box.x + ONE_WIDE + MARGIN, ":");
     if (init_object(&sc_box,
@@ -244,9 +271,11 @@ dialog_timebox(const char *title,
 		    60,
 		    second >= 0 ? second : current.tm_sec,
 		    'S') < 0
-	|| DrawObject(&sc_box) < 0)
-	return -1;
+	|| DrawObject(&sc_box) < 0) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
 
+    dlg_trace_win(dialog);
     while (result == DLG_EXIT_UNKNOWN) {
 	BOX *obj = (state == sHR ? &hr_box
 		    : (state == sMN ? &mn_box :
@@ -331,7 +360,6 @@ dialog_timebox(const char *title,
 		    refresh();
 		    dlg_mouse_free_regions();
 		    goto retry;
-		    break;
 #endif
 		default:
 		    if (obj != 0) {
@@ -363,11 +391,31 @@ dialog_timebox(const char *title,
 	}
     }
 
-    dlg_del_window(dialog);
-    sprintf(buffer, "%02d:%02d:%02d\n",
-	    hr_box.value, mn_box.value, sc_box.value);
+#define DefaultFormat(dst, src) \
+	sprintf(dst, "%02d:%02d:%02d", \
+		hr_box.value, mn_box.value, sc_box.value)
+
+#if defined(HAVE_STRFTIME)
+    if (dialog_vars.time_format != 0) {
+	size_t used;
+	time_t now = time((time_t *) 0);
+	struct tm *parts = localtime(&now);
+
+	parts->tm_sec = sc_box.value;
+	parts->tm_min = mn_box.value;
+	parts->tm_hour = hr_box.value;
+	used = strftime(buffer,
+			sizeof(buffer) - 1,
+			dialog_vars.time_format,
+			parts);
+	if (used == 0 || *buffer == '\0')
+	    DefaultFormat(buffer, hr_box);
+    } else
+#endif
+	DefaultFormat(buffer, hr_box);
+
     dlg_add_result(buffer);
-    dlg_mouse_free_regions();
-    free(prompt);
-    return result;
+    dlg_add_separator();
+
+    return CleanupResult(result, dialog, prompt, &save_vars);
 }

@@ -1,9 +1,9 @@
 /*
- *  $Id: columns.c,v 1.4 2008/06/21 12:27:35 tom Exp $
+ *  $Id: columns.c,v 1.10 2011/10/20 20:53:55 tom Exp $
  *
  *  columns.c -- implements column-alignment
  *
- *  Copyright 2008	Thomas E. Dickey
+ *  Copyright 2008-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License, version 2.1
@@ -25,7 +25,7 @@
 
 #define each(row, data) \
  		row = 0, data = target; \
- 		row < num_rows - 1; \
+ 		row < num_rows; \
 		++row, data = next_row(data, per_row)
 
 static char *
@@ -45,7 +45,7 @@ next_row(char **target, int per_row)
 {
     char *result = (char *) target;
     result += per_row;
-    return (char **) result;
+    return (char **) (void *) result;
 }
 
 static char *
@@ -65,21 +65,21 @@ next_col(char *source, unsigned offset)
 static unsigned
 split_row(char *source, unsigned *offsets, unsigned *widths)
 {
-    int mark = strlen(column_separator());
+    int mark = (int) strlen(column_separator());
     char *next = 0;
     unsigned result = 0;
     unsigned offset = 0;
 
     do {
 	if (result) {
-	    offset = mark + next - source;
-	    widths[result - 1] = offset - offsets[result - 1] - mark;
+	    offset = (unsigned) (mark + next - source);
+	    widths[result - 1] = offset - offsets[result - 1] - (unsigned) mark;
 	}
 	offsets[result] = offset;
 	++result;
     } while ((next = next_col(source, offset)) != 0);
 
-    offset = strlen(source);
+    offset = (unsigned) strlen(source);
     widths[result - 1] = offset - offsets[result - 1];
 
     return result;
@@ -98,7 +98,7 @@ dlg_align_columns(char **target, int per_row, int num_rows)
     if (column_separator()) {
 	char **value;
 	unsigned numcols = 1;
-	unsigned maxcols = 0;
+	size_t maxcols = 0;
 	unsigned *widths;
 	unsigned *offsets;
 	unsigned *maxwidth;
@@ -107,7 +107,7 @@ dlg_align_columns(char **target, int per_row, int num_rows)
 
 	/* first allocate arrays for workspace */
 	for (each(row, value)) {
-	    unsigned len = strlen(*value);
+	    size_t len = strlen(*value);
 	    if (maxcols < len)
 		maxcols = len;
 	}
@@ -143,11 +143,12 @@ dlg_align_columns(char **target, int per_row, int num_rows)
 
 	    assert_ptr(text, "dlg_align_columns");
 
-	    memset(text, ' ', realwidth);
+	    memset(text, ' ', (size_t) realwidth);
 	    for (n = 0; n < cols; ++n) {
-		memcpy(text + offset, *value + offsets[n], widths[n]);
+		memcpy(text + offset, *value + offsets[n], (size_t) widths[n]);
 		offset += maxwidth[n] + 1;
 	    }
+	    text[realwidth] = 0;
 	    *value = text;
 	}
 

@@ -1,9 +1,9 @@
 /*
- *  $Id: editbox.c,v 1.46 2008/06/21 12:07:54 tom Exp $
+ *  $Id: editbox.c,v 1.60 2011/10/20 23:38:07 tom Exp $
  *
  *  editbox.c -- implements the edit box
  *
- *  Copyright 2007,2008 Thomas E. Dickey
+ *  Copyright 2007-2010,2011 Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License, version 2.1
@@ -37,15 +37,16 @@ static void
 grow_list(char ***list, int *have, int want)
 {
     if (want > *have) {
-	unsigned last = *have;
-	unsigned need = (want | 31) + 3;
-	*have = need;
+	size_t last = (size_t) *have;
+	size_t need = (size_t) (want | 31) + 3;
+	*have = (int) need;
 	(*list) = dlg_realloc(char *, need, *list);
 	if ((*list) == 0) {
 	    fail_list();
-	}
-	while (++last < need) {
-	    (*list)[last] = 0;
+	} else {
+	    while (++last < need) {
+		(*list)[last] = 0;
+	    }
 	}
     }
 }
@@ -58,7 +59,7 @@ load_list(const char *file, char ***list, int *rows)
     struct stat sb;
     unsigned n, pass;
     unsigned need;
-    unsigned size;
+    size_t size;
 
     *list = 0;
     *rows = 0;
@@ -67,46 +68,48 @@ load_list(const char *file, char ***list, int *rows)
 	(sb.st_mode & S_IFMT) != S_IFREG)
 	dlg_exiterr("Not a file: %s", file);
 
-    size = sb.st_size;
-    if ((blob = dlg_malloc(char, size + 1)) == 0)
-	  fail_list();
-    blob[size] = '\0';
+    size = (size_t) sb.st_size;
+    if ((blob = dlg_malloc(char, size + 1)) == 0) {
+	fail_list();
+    } else {
+	blob[size] = '\0';
 
-    if ((fp = fopen(file, "r")) == 0)
-	dlg_exiterr("Cannot open: %s", file);
-    size = fread(blob, sizeof(char), size, fp);
-    fclose(fp);
+	if ((fp = fopen(file, "r")) == 0)
+	    dlg_exiterr("Cannot open: %s", file);
+	size = fread(blob, sizeof(char), size, fp);
+	fclose(fp);
 
-    for (pass = 0; pass < 2; ++pass) {
-	int first = TRUE;
-	need = 0;
-	for (n = 0; n < size; ++n) {
-	    if (first && pass) {
-		(*list)[need] = blob + n;
-		first = FALSE;
-	    }
-	    if (blob[n] == '\n') {
-		first = TRUE;
-		++need;
-		if (pass)
-		    blob[n] = '\0';
-	    }
-	}
-	if (pass) {
-	    if (need == 0) {
-		(*list)[0] = dlg_strclone("");
-		(*list)[1] = 0;
-	    } else {
-		for (n = 0; n < need; ++n) {
-		    (*list)[n] = dlg_strclone((*list)[n]);
+	for (pass = 0; pass < 2; ++pass) {
+	    int first = TRUE;
+	    need = 0;
+	    for (n = 0; n < size; ++n) {
+		if (first && pass) {
+		    (*list)[need] = blob + n;
+		    first = FALSE;
 		}
-		(*list)[need] = 0;
+		if (blob[n] == '\n') {
+		    first = TRUE;
+		    ++need;
+		    if (pass)
+			blob[n] = '\0';
+		}
 	    }
-	} else {
-	    grow_list(list, rows, need + 1);
+	    if (pass) {
+		if (need == 0) {
+		    (*list)[0] = dlg_strclone("");
+		    (*list)[1] = 0;
+		} else {
+		    for (n = 0; n < need; ++n) {
+			(*list)[n] = dlg_strclone((*list)[n]);
+		    }
+		    (*list)[need] = 0;
+		}
+	    } else {
+		grow_list(list, rows, (int) need + 1);
+	    }
 	}
+	free(blob);
     }
-    free(blob);
 }
 
 static void
@@ -247,7 +250,7 @@ col_to_chr_offset(const char *text, int col)
     bool found = FALSE;
     int result = 0;
     unsigned n;
-    unsigned len = dlg_count_wchars(text);
+    unsigned len = (unsigned) dlg_count_wchars(text);
 
     for (n = 0; n < len; ++n) {
 	if (cols[n] <= col && cols[n + 1] > col) {
@@ -270,6 +273,36 @@ col_to_chr_offset(const char *text, int col)
 
 #define UPDATE_COL(input) col_offset = dlg_edit_offset(input, chr_offset, box_width)
 
+static int
+widest_line(char **list)
+{
+    int result = MAX_LEN;
+    char *value;
+
+    if (list != 0) {
+	while ((value = *list++) != 0) {
+	    int check = (int) strlen(value);
+	    if (check > result)
+		result = check;
+	}
+    }
+    return result;
+}
+
+#define NAVIGATE_BINDINGS \
+	DLG_KEYS_DATA( DLGK_GRID_DOWN,	KEY_DOWN ), \
+	DLG_KEYS_DATA( DLGK_GRID_RIGHT,	KEY_RIGHT ), \
+	DLG_KEYS_DATA( DLGK_GRID_LEFT,	KEY_LEFT ), \
+	DLG_KEYS_DATA( DLGK_GRID_UP,	KEY_UP ), \
+	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	TAB ), \
+	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_BTAB ), \
+	DLG_KEYS_DATA( DLGK_PAGE_FIRST,	KEY_HOME ), \
+	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_END ), \
+	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_LL ), \
+	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	KEY_NPAGE ), \
+	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	DLGK_MOUSE(KEY_NPAGE) ), \
+	DLG_KEYS_DATA( DLGK_PAGE_PREV,	KEY_PPAGE ), \
+	DLG_KEYS_DATA( DLGK_PAGE_PREV,	DLGK_MOUSE(KEY_PPAGE) )
 /*
  * Display a dialog box for editing a copy of a file
  */
@@ -282,21 +315,16 @@ dlg_editbox(const char *title,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
-	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
-	DLG_KEYS_DATA( DLGK_GRID_DOWN,	KEY_DOWN ),
-	DLG_KEYS_DATA( DLGK_GRID_RIGHT,	KEY_RIGHT ),
-	DLG_KEYS_DATA( DLGK_GRID_LEFT,	KEY_LEFT ),
-	DLG_KEYS_DATA( DLGK_GRID_UP,	KEY_UP ),
-	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	TAB ),
-	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_BTAB ),
-	DLG_KEYS_DATA( DLGK_PAGE_FIRST,	KEY_HOME ),
-	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_END ),
-	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_LL ),
-	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	KEY_NPAGE ),
-	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	DLGK_MOUSE(KEY_NPAGE) ),
-	DLG_KEYS_DATA( DLGK_PAGE_PREV,	KEY_PPAGE ),
-	DLG_KEYS_DATA( DLGK_PAGE_PREV,	DLGK_MOUSE(KEY_PPAGE) ),
+	NAVIGATE_BINDINGS,
+	END_KEYS_BINDING
+    };
+    static DLG_KEYS_BINDING binding2[] = {
+	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
+	ENTERKEY_BINDINGS,
+	NAVIGATE_BINDINGS,
 	END_KEYS_BINDING
     };
     /* *INDENT-ON* */
@@ -316,20 +344,22 @@ dlg_editbox(const char *title,
     int listsize = size_list(*list);
     int result = DLG_EXIT_UNKNOWN;
     int state;
-    int max_len = dlg_max_input(MAX_LEN);
+    size_t max_len = (size_t) dlg_max_input(widest_line(*list));
     char *input, *buffer;
     bool show_all, show_one, was_mouse;
+    bool first_trace = TRUE;
     WINDOW *dialog;
     WINDOW *editing;
     DIALOG_VARS save_vars;
     const char **buttons = dlg_ok_labels();
+    int mincols = (3 * COLS / 4);
 
     dlg_save_vars(&save_vars);
     dialog_vars.separate_output = TRUE;
 
     dlg_does_output();
 
-    buffer = dlg_malloc(char, max_len);
+    buffer = dlg_malloc(char, max_len + 1);
     assert_ptr(buffer, "dlg_editbox");
 
     thisrow = base_row = lastrow = 0;
@@ -339,9 +369,10 @@ dlg_editbox(const char *title,
 #endif
     show_buttons = TRUE;
     state = dialog_vars.defaultno ? dlg_defaultno_button() : sTEXT;
-    key = fkey = 0;
+    fkey = 0;
 
-    dlg_auto_size(title, "", &height, &width, 3 * LINES / 4, 3 * COLS / 4);
+    dlg_button_layout(buttons, &mincols);
+    dlg_auto_size(title, "", &height, &width, 3 * LINES / 4, mincols);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -354,11 +385,11 @@ dlg_editbox(const char *title,
 
     dlg_mouse_setbase(x, y);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
 
-    wattrset(dialog, dialog_attr);
+    (void) wattrset(dialog, dialog_attr);
 
     /* Draw the editing field in a box */
     box_y = MARGIN + 0;
@@ -371,7 +402,7 @@ dlg_editbox(const char *title,
 		 box_x,
 		 box_height,
 		 box_width,
-		 border_attr, dialog_attr);
+		 border_attr, border2_attr);
     dlg_mouse_mkbigregion(box_y + MARGIN,
 			  box_x + MARGIN,
 			  box_height - (2 * MARGIN),
@@ -382,7 +413,7 @@ dlg_editbox(const char *title,
 			     box_width - (2 * MARGIN),
 			     getbegy(dialog) + box_y + 1,
 			     getbegx(dialog) + box_x + 1);
-    dlg_register_window(editing, "editbox", binding);
+    dlg_register_window(editing, "editbox2", binding2);
 
     show_all = TRUE;
     show_one = FALSE;
@@ -408,14 +439,17 @@ dlg_editbox(const char *title,
 	    display_one(editing, THIS_ROW,
 			thisrow, thisrow, base_row, chr_offset);
 	    getyx(editing, y, x);
-	    dlg_draw_arrows2(dialog,
-			     base_row != 0,
-			     base_row + pagesize < listsize,
-			     box_x + ARROWS_COL,
-			     box_y + 0,
-			     box_y + getmaxy(editing) + 1,
-			     dialog_attr,
-			     border_attr);
+	    dlg_draw_scrollbar(dialog,
+			       base_row,
+			       base_row,
+			       base_row + pagesize,
+			       listsize,
+			       box_x,
+			       box_x + getmaxx(editing),
+			       box_y + 0,
+			       box_y + getmaxy(editing) + 1,
+			       border2_attr,
+			       border_attr);
 	    wmove(editing, y, x);
 	    show_one = FALSE;
 	}
@@ -446,7 +480,19 @@ dlg_editbox(const char *title,
 	    }
 	}
 
+	if (first_trace) {
+	    first_trace = FALSE;
+	    dlg_trace_win(dialog);
+	}
+
 	key = dlg_mouse_wgetch((state == sTEXT) ? editing : dialog, &fkey);
+	if (key == ERR) {
+	    result = DLG_EXIT_ERROR;
+	    break;
+	} else if (key == ESC) {
+	    result = DLG_EXIT_ESC;
+	    break;
+	}
 	if (state != sTEXT) {
 	    if (dlg_result_key(key, fkey, &result))
 		break;
@@ -520,7 +566,8 @@ dlg_editbox(const char *title,
 			if (thisrow == 0) {
 			    beep();
 			} else {
-			    int len = strlen(THIS_ROW) + strlen(PREV_ROW) + 1;
+			    size_t len = (strlen(THIS_ROW) +
+					  strlen(PREV_ROW) + 1);
 			    char *tmp = dlg_malloc(char, len);
 
 			    assert_ptr(tmp, "dlg_editbox");
@@ -564,7 +611,7 @@ dlg_editbox(const char *title,
 		    continue;
 		}
 	    }
-	    strcpy(buffer, input);
+	    strncpy(buffer, input, max_len - 1)[max_len - 1] = '\0';
 	    edit = dlg_edit_string(buffer, &chr_offset, key, fkey, FALSE);
 
 	    if (edit) {

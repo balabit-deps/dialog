@@ -1,14 +1,13 @@
 /*
- *  $Id: yesno.c,v 1.44 2005/12/07 00:45:56 tom Exp $
+ *  $Id: yesno.c,v 1.54 2011/10/15 12:43:07 tom Exp $
  *
  *  yesno.c -- implements the yes/no box
  *
- *  Copyright 1999-2004,2005	Thomas E. Dickey
+ *  Copyright 1999-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -36,6 +35,7 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_ENTER,	' ' ),
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_DOWN ),
@@ -44,6 +44,7 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
 	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_UP ),
 	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_BTAB ),
 	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_LEFT ),
+	SCROLLKEY_BINDINGS,
 	END_KEYS_BINDING
     };
     /* *INDENT-ON* */
@@ -56,6 +57,9 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
     int result = DLG_EXIT_UNKNOWN;
     char *prompt = dlg_strclone(cprompt);
     const char **buttons = dlg_yes_labels();
+    int min_width = 25;
+    bool show = TRUE;
+    int page, last = 0, offset = 0;
 
 #ifdef KEY_RESIZE
     int req_high = height;
@@ -64,7 +68,8 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
 #endif
 
     dlg_tab_correct_str(prompt);
-    dlg_auto_size(title, prompt, &height, &width, 2, 25);
+    dlg_button_layout(buttons, &min_width);
+    dlg_auto_size(title, prompt, &height, &width, 2, min_width);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -72,11 +77,9 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
     y = dlg_box_y_ordinate(height);
 
 #ifdef KEY_RESIZE
-    if (dialog != 0) {
-	(void) wresize(dialog, height, width);
-	(void) mvwin(dialog, y, x);
-	(void) refresh();
-    } else
+    if (dialog != 0)
+	dlg_move_window(dialog, height, width, y, x);
+    else
 #endif
     {
 	dialog = dlg_new_window(height, width, y, x);
@@ -84,16 +87,25 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
 	dlg_register_buttons(dialog, "yesno", buttons);
     }
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
+    dlg_draw_helpline(dialog, FALSE);
 
     wattrset(dialog, dialog_attr);
-    dlg_print_autowrap(dialog, prompt, height, width);
 
-    dlg_draw_buttons(dialog, height - 2, 0, buttons, button, FALSE, width);
+    page = height - (1 + 3 * MARGIN);
+    dlg_draw_buttons(dialog,
+		     height - 2 * MARGIN, 0,
+		     buttons, button, FALSE, width);
 
     while (result == DLG_EXIT_UNKNOWN) {
+	if (show) {
+	    last = dlg_print_scrolled(dialog, prompt, offset,
+				      page, width, TRUE);
+	    dlg_trace_win(dialog);
+	    show = FALSE;
+	}
 	key = dlg_mouse_wgetch(dialog, &fkey);
 	if (dlg_result_key(key, fkey, &result))
 	    break;
@@ -137,7 +149,8 @@ dialog_yesno(const char *title, const char *cprompt, int height, int width)
 		    result = dlg_yes_buttoncode(key - M_EVENT);
 		    if (result < 0)
 			result = DLG_EXIT_OK;
-		} else {
+		} else if (dlg_check_scrolled(key, last, page,
+					      &show, &offset) != 0) {
 		    beep();
 		}
 		break;

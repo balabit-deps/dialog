@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: dialog 1.0-rel20041222\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2005-12-07 20:39-0500\n"
+"POT-Creation-Date: 2008-06-18 18:26-0400\n"
 "PO-Revision-Date: 2005-02-06 13:22+0100\n"
 "Last-Translator: Florian Verdet _goto <fvgoto@linuxbourg.ch>\n"
 "Language-Team: Rhaeto-Romance <gnu-rumantsch@guglielmtux.ch>\n"
@@ -16,57 +16,98 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "X-Generator: KBabel 1.2\n"
 
-#: buttons.c:379
+#: buttons.c:385
 msgid "Yes"
 msgstr "Schi"
 
-#: buttons.c:387
+#: buttons.c:393
 msgid "No"
 msgstr "Na"
 
-#: buttons.c:395
+#: buttons.c:401
 msgid "OK"
 msgstr "OK"
 
-#: buttons.c:403
+#: buttons.c:409
 msgid "Cancel"
 msgstr "Laschar star"
 
-#: buttons.c:411
+#: buttons.c:417
 msgid "EXIT"
 msgstr "SORTIR"
 
-#: buttons.c:419
+#: buttons.c:425
 msgid "Extra"
 msgstr "Extra"
 
-#: buttons.c:427
+#: buttons.c:433
 msgid "Help"
 msgstr "Agüd"
 
 #. Headline "Month"
-#: calendar.c:274
+#: calendar.c:273
 msgid "Month"
 msgstr "Mais"
 
 #. Headline "Year"
-#: calendar.c:294
+#: calendar.c:293
 msgid "Year"
 msgstr "On"
 
-#: dialog.c:694
+#: dialog.c:741
 msgid "Rename"
 msgstr "Müdar nom"
 
-#: fselect.c:451
+#: fselect.c:550
 #, fuzzy
 msgid "Directories"
 msgstr "Registers"
 
-#: fselect.c:452
+#: fselect.c:551
 msgid "Files"
 msgstr "Datotecas"
 
-#: textbox.c:483
+#: mixedgauge.c:58
+msgid "Succeeded"
+msgstr ""
+
+#: mixedgauge.c:61
+#, fuzzy
+msgid "Failed"
+msgstr "Datotecas"
+
+#: mixedgauge.c:64
+msgid "Passed"
+msgstr ""
+
+#: mixedgauge.c:67
+msgid "Completed"
+msgstr ""
+
+#: mixedgauge.c:70
+msgid "Checked"
+msgstr ""
+
+#: mixedgauge.c:73
+msgid "Done"
+msgstr ""
+
+#: mixedgauge.c:76
+msgid "Skipped"
+msgstr ""
+
+#: mixedgauge.c:79
+msgid "In Progress"
+msgstr ""
+
+#: mixedgauge.c:85
+msgid "N/A"
+msgstr ""
+
+#: mixedgauge.c:193
+msgid "Overall Progress"
+msgstr ""
+
+#: textbox.c:489
 msgid "Search"
 msgstr "Tscherchar"
