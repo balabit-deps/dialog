@@ -1,14 +1,13 @@
 /*
- * $Id: calendar.c,v 1.48 2005/12/06 20:33:19 tom Exp $
+ * $Id: calendar.c,v 1.65 2011/10/20 23:51:07 tom Exp $
  *
  *  calendar.c -- implements the calendar box
  *
- * Copyright 2001-2004,2005	Thomas E. Dickey
+ *  Copyright 2001-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -58,6 +57,86 @@ typedef struct _box {
     int height;
     BOX_DRAW box_draw;
 } BOX;
+
+static const char *
+nameOfDayOfWeek(int n)
+{
+    static const char *table[7]
+#ifndef ENABLE_NLS
+    =
+    {
+	"Sunday",
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday"
+    }
+#endif
+     ;
+    const char *result = 0;
+
+    if (n >= 0 && n < 7) {
+#ifdef ENABLE_NLS
+	if (table[n] == 0) {
+	    nl_item items[7] =
+	    {
+		ABDAY_1, ABDAY_2, ABDAY_3, ABDAY_4, ABDAY_5, ABDAY_6, ABDAY_7
+	    };
+	    table[n] = nl_langinfo(items[n]);
+	}
+#endif
+	result = table[n];
+    }
+    if (result == 0) {
+	result = "?";
+    }
+    return result;
+}
+
+static const char *
+nameOfMonth(int n)
+{
+    static const char *table[12]
+#ifndef ENABLE_NLS
+    =
+    {
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December"
+    }
+#endif
+     ;
+    const char *result = 0;
+
+    if (n >= 0 && n < 12) {
+#ifdef ENABLE_NLS
+	if (table[n] == 0) {
+	    nl_item items[12] =
+	    {
+		MON_1, MON_2, MON_3, MON_4, MON_5, MON_6,
+		MON_7, MON_8, MON_9, MON_10, MON_11, MON_12
+	    };
+	    table[n] = nl_langinfo(items[n]);
+	}
+#endif
+	result = table[n];
+    }
+    if (result == 0) {
+	result = "?";
+    }
+    return result;
+}
 
 static int
 days_in_month(struct tm *current, int offset /* -1, 0, 1 */ )
@@ -136,29 +215,6 @@ next_or_previous(int key, int two_d)
 static int
 draw_day(BOX * data, struct tm *current)
 {
-#ifdef ENABLE_NLS
-    char *of_week[] =
-    {
-	nl_langinfo(ABDAY_1),
-	nl_langinfo(ABDAY_2),
-	nl_langinfo(ABDAY_3),
-	nl_langinfo(ABDAY_4),
-	nl_langinfo(ABDAY_5),
-	nl_langinfo(ABDAY_6),
-	nl_langinfo(ABDAY_7)
-    };
-#else
-    static const char *const of_week[] =
-    {
-	"Sunday",
-	"Monday",
-	"Tuesday",
-	"Wednesday",
-	"Thursday",
-	"Friday",
-	"Saturday"
-    };
-#endif
     int cell_wide = MON_WIDE;
     int y, x, this_x = 0;
     int save_y = 0, save_x = 0;
@@ -169,18 +225,20 @@ draw_day(BOX * data, struct tm *current)
     int prev = days_in_month(current, -1);
 
     werase(data->window);
-    dlg_draw_box(data->parent,
-		 data->y - MARGIN, data->x - MARGIN,
-		 data->height + (2 * MARGIN), data->width + (2 * MARGIN),
-		 menubox_border_attr, menubox_attr);	/* border of daybox */
+    dlg_draw_box2(data->parent,
+		  data->y - MARGIN, data->x - MARGIN,
+		  data->height + (2 * MARGIN), data->width + (2 * MARGIN),
+		  menubox_attr,
+		  menubox_border_attr,
+		  menubox_border2_attr);
 
-    wattrset(data->window, menubox_attr);	/* daynames headline */
+    (void) wattrset(data->window, menubox_attr);	/* daynames headline */
     for (x = 0; x < 7; x++) {
 	mvwprintw(data->window,
 		  0, (x + 1) * cell_wide, "%*.*s ",
 		  cell_wide - 1,
 		  cell_wide - 1,
-		  of_week[x]);
+		  nameOfDayOfWeek(x));
     }
 
     mday = ((6 + current->tm_mday - current->tm_wday) % 7) - 7;
@@ -190,7 +248,7 @@ draw_day(BOX * data, struct tm *current)
     week = (current->tm_yday + 6 + mday - current->tm_mday) / 7;
 
     for (y = 1; mday < last; y++) {
-	wattrset(data->window, menubox_attr);	/* weeknumbers headline */
+	(void) wattrset(data->window, menubox_attr);	/* weeknumbers headline */
 	mvwprintw(data->window,
 		  y, 0,
 		  "%*d ",
@@ -201,9 +259,9 @@ draw_day(BOX * data, struct tm *current)
 	    ++mday;
 	    if (wmove(data->window, y, this_x) == ERR)
 		continue;
-	    wattrset(data->window, item_attr);	/* not selected days */
+	    (void) wattrset(data->window, item_attr);	/* not selected days */
 	    if (mday == day) {
-		wattrset(data->window, item_selected_attr);	/* selected day */
+		(void) wattrset(data->window, item_selected_attr);	/* selected day */
 		save_y = y;
 		save_x = this_x;
 	    }
@@ -219,8 +277,9 @@ draw_day(BOX * data, struct tm *current)
 	}
 	wmove(data->window, save_y, save_x);
     }
+    /* just draw arrows - scrollbar is unsuitable here */
     dlg_draw_arrows(data->parent, TRUE, TRUE,
-		    data->x + 5,
+		    data->x + ARROWS_COL,
 		    data->y - 1,
 		    data->y + data->height);
 
@@ -233,51 +292,20 @@ draw_day(BOX * data, struct tm *current)
 static int
 draw_month(BOX * data, struct tm *current)
 {
-#ifdef ENABLE_NLS
-    char *months[] =
-    {
-	nl_langinfo(MON_1),
-	nl_langinfo(MON_2),
-	nl_langinfo(MON_3),
-	nl_langinfo(MON_4),
-	nl_langinfo(MON_5),
-	nl_langinfo(MON_6),
-	nl_langinfo(MON_7),
-	nl_langinfo(MON_8),
-	nl_langinfo(MON_9),
-	nl_langinfo(MON_10),
-	nl_langinfo(MON_11),
-	nl_langinfo(MON_12)
-    };
-#else
-    static const char *const months[] =
-    {
-	"January",
-	"February",
-	"March",
-	"April",
-	"May",
-	"June",
-	"July",
-	"August",
-	"September",
-	"October",
-	"November",
-	"December"
-    };
-#endif
     int month;
 
     month = current->tm_mon + 1;
 
-    wattrset(data->parent, dialog_attr);	/* Headline "Month" */
+    (void) wattrset(data->parent, dialog_attr);		/* Headline "Month" */
     (void) mvwprintw(data->parent, data->y - 2, data->x - 1, _("Month"));
-    dlg_draw_box(data->parent,
-		 data->y - 1, data->x - 1,
-		 data->height + 2, data->width + 2,
-		 menubox_border_attr, menubox_attr);	/* borders of monthbox */
-    wattrset(data->window, item_attr);	/* color the month selection */
-    mvwprintw(data->window, 0, 0, "%s", months[month - 1]);
+    dlg_draw_box2(data->parent,
+		  data->y - 1, data->x - 1,
+		  data->height + 2, data->width + 2,
+		  menubox_attr,
+		  menubox_border_attr,
+		  menubox_border2_attr);
+    (void) wattrset(data->window, item_attr);	/* color the month selection */
+    mvwprintw(data->window, 0, 0, "%s", nameOfMonth(month - 1));
     wmove(data->window, 0, 0);
     return 0;
 }
@@ -290,13 +318,15 @@ draw_year(BOX * data, struct tm *current)
 {
     int year = current->tm_year + 1900;
 
-    wattrset(data->parent, dialog_attr);	/* Headline "Year" */
+    (void) wattrset(data->parent, dialog_attr);		/* Headline "Year" */
     (void) mvwprintw(data->parent, data->y - 2, data->x - 1, _("Year"));
-    dlg_draw_box(data->parent,
-		 data->y - 1, data->x - 1,
-		 data->height + 2, data->width + 2,
-		 menubox_border_attr, menubox_attr);	/* borders of yearbox */
-    wattrset(data->window, item_attr);	/* color the year selection */
+    dlg_draw_box2(data->parent,
+		  data->y - 1, data->x - 1,
+		  data->height + 2, data->width + 2,
+		  menubox_attr,
+		  menubox_border_attr,
+		  menubox_border2_attr);
+    (void) wattrset(data->window, item_attr);	/* color the year selection */
     mvwprintw(data->window, 0, 0, "%4d", year);
     wmove(data->window, 0, 0);
     return 0;
@@ -335,6 +365,19 @@ init_object(BOX * data,
     return 0;
 }
 
+static int
+CleanupResult(int code, WINDOW *dialog, char *prompt, DIALOG_VARS * save_vars)
+{
+    if (dialog != 0)
+	dlg_del_window(dialog);
+    dlg_mouse_free_regions();
+    if (prompt != 0)
+	free(prompt);
+    dlg_restore_vars(save_vars);
+
+    return code;
+}
+
 #define DrawObject(data) (data)->box_draw(data, &current)
 
 /*
@@ -351,18 +394,21 @@ dialog_calendar(const char *title,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_ENTER,	' ' ),
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT, TAB ),
 	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_BTAB ),
 	DLG_KEYS_DATA( DLGK_GRID_DOWN,	'j' ),
+	DLG_KEYS_DATA( DLGK_GRID_DOWN,	DLGK_MOUSE(KEY_NPAGE) ),
 	DLG_KEYS_DATA( DLGK_GRID_DOWN,	KEY_DOWN ),
 	DLG_KEYS_DATA( DLGK_GRID_DOWN,	KEY_NPAGE ),
-	DLG_KEYS_DATA( DLGK_GRID_DOWN,	DLGK_MOUSE(KEY_NPAGE) ),
+	DLG_KEYS_DATA( DLGK_GRID_LEFT,	'-' ),
 	DLG_KEYS_DATA( DLGK_GRID_LEFT,  'h' ),
 	DLG_KEYS_DATA( DLGK_GRID_LEFT,  CHR_BACKSPACE ),
 	DLG_KEYS_DATA( DLGK_GRID_LEFT,  CHR_PREVIOUS ),
 	DLG_KEYS_DATA( DLGK_GRID_LEFT,  KEY_LEFT ),
+	DLG_KEYS_DATA( DLGK_GRID_RIGHT,	'+' ),
 	DLG_KEYS_DATA( DLGK_GRID_RIGHT, 'l' ),
 	DLG_KEYS_DATA( DLGK_GRID_RIGHT, CHR_NEXT ),
 	DLG_KEYS_DATA( DLGK_GRID_RIGHT, KEY_NEXT ),
@@ -390,12 +436,15 @@ dialog_calendar(const char *title,
     WINDOW *dialog;
     time_t now_time = time((time_t *) 0);
     struct tm current;
-    STATES state = dlg_defaultno_button();
+    int state = dlg_defaultno_button();
     const char **buttons = dlg_ok_labels();
     char *prompt = dlg_strclone(subtitle);
-    int longest;
-    int mincols;
+    int mincols = MIN_WIDE;
     char buffer[MAX_LEN];
+    DIALOG_VARS save_vars;
+
+    dlg_save_vars(&save_vars);
+    dialog_vars.separate_output = TRUE;
 
     dlg_does_output();
 
@@ -430,11 +479,7 @@ dialog_calendar(const char *title,
 	    current = *localtime(&now_time);
 	}
     }
-
-    dlg_button_sizes(buttons, FALSE, &longest, &mincols);
-    mincols += (0 * MARGIN) + (dlg_button_count(buttons) * 3) - 1;
-    if (mincols < MIN_WIDE)
-	mincols = MIN_WIDE;
+    dlg_button_layout(buttons, &mincols);
 
 #ifdef KEY_RESIZE
   retry:
@@ -442,8 +487,6 @@ dialog_calendar(const char *title,
 
     dlg_auto_size(title, prompt, &height, &width, 0, mincols);
     height += MIN_HIGH - 1;
-    if (width < MIN_WIDE)
-	width = MIN_WIDE;
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -454,11 +497,11 @@ dialog_calendar(const char *title,
     dlg_register_buttons(dialog, "calendar", buttons);
 
     /* mainbox */
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
 
-    wattrset(dialog, dialog_attr);	/* text mainbox */
+    (void) wattrset(dialog, dialog_attr);	/* text mainbox */
     dlg_print_autowrap(dialog, prompt, height, width);
 
     /* compute positions of day, month and year boxes */
@@ -474,8 +517,9 @@ dialog_calendar(const char *title,
 		    DAY_HIGH + 1,
 		    draw_day,
 		    'D') < 0
-	|| DrawObject(&dy_box) < 0)
-	return DLG_EXIT_ERROR;
+	|| DrawObject(&dy_box) < 0) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
 
     if (init_object(&mn_box,
 		    dialog,
@@ -485,8 +529,9 @@ dialog_calendar(const char *title,
 		    HDR_HIGH,
 		    draw_month,
 		    'M') < 0
-	|| DrawObject(&mn_box) < 0)
-	return DLG_EXIT_ERROR;
+	|| DrawObject(&mn_box) < 0) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
 
     if (init_object(&yr_box,
 		    dialog,
@@ -496,9 +541,11 @@ dialog_calendar(const char *title,
 		    mn_box.height,
 		    draw_year,
 		    'Y') < 0
-	|| DrawObject(&yr_box) < 0)
-	return DLG_EXIT_ERROR;
+	|| DrawObject(&yr_box) < 0) {
+	return CleanupResult(DLG_EXIT_ERROR, dialog, prompt, &save_vars);
+    }
 
+    dlg_trace_win(dialog);
     while (result == DLG_EXIT_UNKNOWN) {
 	BOX *obj = (state == sDAY ? &dy_box
 		    : (state == sMONTH ? &mn_box :
@@ -532,7 +579,7 @@ dialog_calendar(const char *title,
 		state = sYEAR;
 		break;
 	    case DLGK_ENTER:
-		result = dlg_ok_buttoncode(button);
+		result = dlg_enter_buttoncode(button);
 		break;
 	    case DLGK_FIELD_PREV:
 		state = dlg_prev_ok_buttonindex(state, sMONTH);
@@ -551,7 +598,6 @@ dialog_calendar(const char *title,
 		refresh();
 		dlg_mouse_free_regions();
 		goto retry;
-		break;
 #endif
 	    default:
 		step = 0;
@@ -618,11 +664,23 @@ dialog_calendar(const char *title,
 	}
     }
 
-    dlg_del_window(dialog);
-    sprintf(buffer, "%02d/%02d/%0d\n",
-	    current.tm_mday, current.tm_mon + 1, current.tm_year + 1900);
+#define DefaultFormat(dst, src) \
+	sprintf(dst, "%02d/%02d/%0d", \
+		src.tm_mday, src.tm_mon + 1, src.tm_year + 1900)
+#ifdef HAVE_STRFTIME
+    if (dialog_vars.date_format != 0) {
+	size_t used = strftime(buffer,
+			       sizeof(buffer) - 1,
+			       dialog_vars.date_format,
+			       &current);
+	if (used == 0 || *buffer == '\0')
+	    DefaultFormat(buffer, current);
+    } else
+#endif
+	DefaultFormat(buffer, current);
+
     dlg_add_result(buffer);
-    dlg_mouse_free_regions();
-    free(prompt);
-    return result;
+    dlg_add_separator();
+
+    return CleanupResult(result, dialog, prompt, &save_vars);
 }

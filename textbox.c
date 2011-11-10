@@ -1,14 +1,13 @@
 /*
- *  $Id: textbox.c,v 1.77 2005/12/07 00:45:30 tom Exp $
+ *  $Id: textbox.c,v 1.106 2011/10/20 23:41:38 tom Exp $
  *
  *  textbox.c -- implements the text box
  *
- *  Copyright 2000-2004,2005	Thomas E. Dickey
+ *  Copyright 2000-2010,2011	Thomas E.  Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -54,7 +53,7 @@ static long
 lseek_obj(MY_OBJ * obj, long offset, int mode)
 {
     long fpos;
-    if ((fpos = lseek(obj->fd, offset, mode)) == -1) {
+    if ((fpos = (long) lseek(obj->fd, (off_t) offset, mode)) == -1) {
 	switch (mode) {
 	case SEEK_CUR:
 	    dlg_exiterr("Cannot get file position");
@@ -73,13 +72,13 @@ lseek_obj(MY_OBJ * obj, long offset, int mode)
 static long
 ftell_obj(MY_OBJ * obj)
 {
-    return lseek_obj(obj, 0, SEEK_CUR);
+    return lseek_obj(obj, 0L, SEEK_CUR);
 }
 
 static char *
-xalloc(long size)
+xalloc(size_t size)
 {
-    char *result = malloc(size);
+    char *result = dlg_malloc(char, size);
     assert_ptr(result, "xalloc");
     return result;
 }
@@ -132,7 +131,7 @@ read_high(MY_OBJ * obj, size_t size_read)
 		obj->buffer_len = obj->bytes_read;
 
 		/* Allocate space for read buffer */
-		obj->buf = xalloc(obj->buffer_len + 1);
+		obj->buf = xalloc((size_t) obj->buffer_len + 1);
 	    }
 
 	} else {
@@ -201,9 +200,9 @@ tabize(MY_OBJ * obj, long val, long *first_pos)
     lseek_obj(obj, fpos - obj->fd_bytes_read, SEEK_SET);
 
     /* Allocate space for read buffer */
-    buftab = xalloc(val + 1);
+    buftab = xalloc((size_t) val + 1);
 
-    if ((read(obj->fd, buftab, val)) == -1)
+    if ((read(obj->fd, buftab, (size_t) val)) == -1)
 	dlg_exiterr("Error reading file in tabize().");
 
     begin_line = count = 0;
@@ -310,7 +309,7 @@ back_lines(MY_OBJ * obj, long n)
 		/* Really possible to move backward BUF_SIZE/2 bytes? */
 		if (fpos < BUF_SIZE / 2 + obj->fd_bytes_read) {
 		    /* No, move less than */
-		    lseek_obj(obj, 0, SEEK_SET);
+		    lseek_obj(obj, 0L, SEEK_SET);
 		    val_to_tabize = fpos - obj->fd_bytes_read;
 		} else {	/* Move backward BUF_SIZE/2 bytes */
 		    lseek_obj(obj, -(BUF_SIZE / 2 + obj->fd_bytes_read), SEEK_CUR);
@@ -341,7 +340,7 @@ back_lines(MY_OBJ * obj, long n)
 		    /* Really possible to move backward BUF_SIZE/2 bytes? */
 		    if (fpos < BUF_SIZE / 2 + obj->fd_bytes_read) {
 			/* No, move less than */
-			lseek_obj(obj, 0, SEEK_SET);
+			lseek_obj(obj, 0L, SEEK_SET);
 			val_to_tabize = fpos - obj->fd_bytes_read;
 		    } else {	/* Move backward BUF_SIZE/2 bytes */
 			lseek_obj(obj, -(BUF_SIZE / 2 + obj->fd_bytes_read), SEEK_CUR);
@@ -367,28 +366,35 @@ back_lines(MY_OBJ * obj, long n)
 static void
 print_line(MY_OBJ * obj, int row, int width)
 {
-    int i, y, x;
-    char *line = get_line(obj);
-    const int *cols = dlg_index_columns(line);
-    const int *indx = dlg_index_wchars(line);
-    int limit = dlg_count_wchars(line);
-    int first = 0;
-    int last = limit;
+    if (wmove(obj->text, row, 0) != ERR) {
+	int i, y, x;
+	char *line = get_line(obj);
+	const int *cols = dlg_index_columns(line);
+	const int *indx = dlg_index_wchars(line);
+	int limit = dlg_count_wchars(line);
+	int first = 0;
+	int last = limit;
 
-    for (i = 0; i <= limit && cols[i] < obj->hscroll; ++i)
-	first = i;
+	if (width > getmaxx(obj->text))
+	    width = getmaxx(obj->text);
+	--width;		/* for the leading ' ' */
 
-    for (i = first; i <= limit && cols[i] - cols[first] <= PAGE_WIDTH; ++i)
-	last = i;
+	for (i = 0; i <= limit && cols[i] < obj->hscroll; ++i)
+	    first = i;
 
-    (void) wmove(obj->text, row, 0);	/* move cursor to correct line */
-    (void) waddch(obj->text, ' ');
-    (void) waddnstr(obj->text, line + indx[first], indx[last] - indx[first]);
+	for (i = first; (i <= limit) && ((cols[i] - cols[first]) < width); ++i)
+	    last = i;
 
-    getyx(obj->text, y, x);
-    /* Clear 'residue' of previous line */
-    for (i = 0; i < width - x; i++)
 	(void) waddch(obj->text, ' ');
+	(void) waddnstr(obj->text, line + indx[first], indx[last] - indx[first]);
+
+	getyx(obj->text, y, x);
+	if (y == row) {		/* Clear 'residue' of previous line */
+	    for (i = 0; i <= width - x; i++) {
+		(void) waddch(obj->text, ' ');
+	    }
+	}
+    }
 }
 
 /*
@@ -408,6 +414,7 @@ print_page(MY_OBJ * obj, int height, int width)
 	    passed_end = 1;
     }
     (void) wnoutrefresh(obj->text);
+    dlg_trace_win(obj->text);
 }
 
 /*
@@ -416,13 +423,9 @@ print_page(MY_OBJ * obj, int height, int width)
 static void
 print_position(MY_OBJ * obj, WINDOW *win, int height, int width)
 {
-    chtype save = getattrs(win);
     long fpos;
     long size;
-    int percent;
-    int len;
     long first = -1;
-    char buffer[80];
 
     fpos = ftell_obj(obj);
     if (dialog_vars.tab_correct)
@@ -430,32 +433,15 @@ print_position(MY_OBJ * obj, WINDOW *win, int height, int width)
     else
 	first = find_first(obj, obj->buf, size = obj->in_buf);
 
-    wattrset(win, position_indicator_attr);
-    percent = (!obj->file_size
-	       ? 100
-	       : (int) (((fpos - obj->fd_bytes_read + size) * 100)
-			/ obj->file_size));
-
-    if (percent < 0)
-	percent = 0;
-    if (percent > 100)
-	percent = 100;
-
-    (void) sprintf(buffer, "%d%%", percent);
-    (void) wmove(win, PAGE_LENGTH + 1, PAGE_WIDTH - 7);
-    (void) waddstr(win, buffer);
-    if ((len = dlg_count_columns(buffer)) < 4) {
-	wattrset(win, border_attr);
-	whline(win, ACS_HLINE, 4 - len);
-    }
-
-    wattrset(win, save);
-    dlg_draw_arrows2(win,
-		     first != 0,
-		     size < obj->fd_bytes_read,
-		     5, 0, PAGE_LENGTH + 1,
-		     border_attr,
-		     border_attr);
+    dlg_draw_scrollbar(win,
+		       first,
+		       fpos - obj->fd_bytes_read + size,
+		       fpos - obj->fd_bytes_read + size,
+		       obj->file_size,
+		       0, PAGE_WIDTH,
+		       0, PAGE_LENGTH + 1,
+		       border_attr,
+		       border_attr);
 }
 
 /*
@@ -467,6 +453,7 @@ get_search_term(WINDOW *dialog, char *input, int height, int width)
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
 	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	END_KEYS_BINDING
     };
@@ -480,7 +467,7 @@ get_search_term(WINDOW *dialog, char *input, int height, int width)
     int fkey = 0;
     bool first = TRUE;
     int result = DLG_EXIT_UNKNOWN;
-    char *caption = _("Search");
+    const char *caption = _("Search");
     int len_caption = dlg_count_columns(caption);
     const int *indx;
     int limit;
@@ -496,17 +483,16 @@ get_search_term(WINDOW *dialog, char *input, int height, int width)
 
     box_x = (width - box_width) / 2;
     box_y = (height - box_height) / 2;
-#ifdef HAVE_COLOR
-    if (dialog_state.use_shadow)
-	dlg_draw_shadow(dialog, box_y, box_x, box_height, box_width);
-#endif
-    widget = newwin(box_height, box_width, old_y + box_y, old_x + box_x);
+    widget = dlg_new_modal_window(dialog,
+				  box_height, box_width,
+				  old_y + box_y, old_x + box_x);
     keypad(widget, TRUE);
     dlg_register_window(widget, "searchbox", binding);
 
-    dlg_draw_box(widget, 0, 0, box_height, box_width,
-		 searchbox_attr,
-		 searchbox_border_attr);
+    dlg_draw_box2(widget, 0, 0, box_height, box_width,
+		  searchbox_attr,
+		  searchbox_border_attr,
+		  searchbox_border2_attr);
     wattrset(widget, searchbox_title_attr);
     (void) wmove(widget, 0, (box_width - len_caption) / 2);
 
@@ -514,20 +500,29 @@ get_search_term(WINDOW *dialog, char *input, int height, int width)
     limit = dlg_limit_columns(caption, len_caption, 0);
     (void) waddnstr(widget, caption + indx[0], indx[limit] - indx[0]);
 
-    box_y++;
-    box_x++;
     box_width -= 2;
-    input[0] = '\0';
+    offset = dlg_count_columns(input);
 
-    for (;;) {
+    while (result == DLG_EXIT_UNKNOWN) {
 	if (!first) {
 	    key = dlg_getc(widget, &fkey);
-	    if (key == ESC) {
+	    if (fkey) {
+		switch (fkey) {
+#ifdef KEY_RESIZE
+		case KEY_RESIZE:
+		    result = DLG_EXIT_CANCEL;
+		    continue;
+#endif
+		case DLGK_ENTER:
+		    result = DLG_EXIT_OK;
+		    continue;
+		}
+	    } else if (key == ESC) {
 		result = DLG_EXIT_ESC;
-		break;
-	    } else if (key == DLGK_ENTER) {
-		result = DLG_EXIT_OK;
-		break;
+		continue;
+	    } else if (key == ERR) {
+		napms(50);
+		continue;
 	    }
 	}
 	if (dlg_edit_string(input, &offset, key, fkey, first)) {
@@ -536,7 +531,7 @@ get_search_term(WINDOW *dialog, char *input, int height, int width)
 	    first = FALSE;
 	}
     }
-    delwin(widget);
+    dlg_del_window(widget);
     return result;
 }
 
@@ -546,6 +541,7 @@ perform_search(MY_OBJ * obj, int height, int width, int key, char *search_term)
     int dir;
     long tempinx;
     long fpos;
+    int result;
     bool found;
     bool temp, temp1;
     bool moved = FALSE;
@@ -559,10 +555,17 @@ perform_search(MY_OBJ * obj, int height, int width, int key, char *search_term)
 		return FALSE;
 	    }
 	    /* Get search term from user */
-	} else if (get_search_term(obj->text, search_term,
-				   PAGE_LENGTH,
-				   PAGE_WIDTH) == DLG_EXIT_ESC
+	} else if ((result = get_search_term(obj->text, search_term,
+					     PAGE_LENGTH,
+					     PAGE_WIDTH)) != DLG_EXIT_OK
 		   || search_term[0] == '\0') {
+#ifdef KEY_RESIZE
+	    if (result == DLG_EXIT_CANCEL) {
+		ungetch(key);
+		ungetch(KEY_RESIZE);
+		/* FALLTHRU */
+	    }
+#endif
 	    /* ESC pressed, or no search term, reprint page to clear box */
 	    wattrset(obj->text, dialog_attr);
 	    back_lines(obj, obj->page_length);
@@ -578,7 +581,6 @@ perform_search(MY_OBJ * obj, int height, int width, int key, char *search_term)
 	back_lines(obj, (dir
 			 ? obj->page_length - 1
 			 : obj->page_length + 1));
-	found = FALSE;
 	if (dir) {		/* Forward search */
 	    while ((found = match_string(obj, search_term)) == FALSE) {
 		if (obj->end_reached)
@@ -588,7 +590,7 @@ perform_search(MY_OBJ * obj, int height, int width, int key, char *search_term)
 	    while ((found = match_string(obj, search_term)) == FALSE) {
 		if (obj->begin_reached)
 		    break;
-		back_lines(obj, 2);
+		back_lines(obj, 2L);
 	    }
 	}
 	if (found == FALSE) {	/* not found */
@@ -607,7 +609,7 @@ perform_search(MY_OBJ * obj, int height, int width, int key, char *search_term)
 	     */
 	    back_lines(obj, obj->page_length);
 	} else {		/* Search term found */
-	    back_lines(obj, 1);
+	    back_lines(obj, 1L);
 	}
 	/* Reprint page */
 	wattrset(obj->text, dialog_attr);
@@ -626,6 +628,7 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_GRID_DOWN,  'J' ),
 	DLG_KEYS_DATA( DLGK_GRID_DOWN,  'j' ),
@@ -672,6 +675,7 @@ dialog_textbox(const char *title, const char *file, int height, int width)
     bool moved;
     int result = DLG_EXIT_UNKNOWN;
     int button = dialog_vars.extra_button ? dlg_defaultno_button() : 0;
+    int min_width = 12;
 
     search_term[0] = '\0';	/* no search term entered yet */
 
@@ -688,19 +692,21 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 
     /* Get file size. Actually, 'file_size' is the real file size - 1,
        since it's only the last byte offset from the beginning */
-    obj.file_size = lseek_obj(&obj, 0, SEEK_END);
+    obj.file_size = lseek_obj(&obj, 0L, SEEK_END);
 
     /* Restore file pointer to beginning of file after getting file size */
-    lseek_obj(&obj, 0, SEEK_SET);
+    lseek_obj(&obj, 0L, SEEK_SET);
 
     read_high(&obj, BUF_SIZE);
+
+    dlg_button_layout(obj.buttons, &min_width);
 
 #ifdef KEY_RESIZE
   retry:
 #endif
     moved = TRUE;
 
-    dlg_auto_sizefile(title, file, &height, &width, 2, 12);
+    dlg_auto_sizefile(title, file, &height, &width, 2, min_width);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -718,8 +724,8 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 
     /* register the new window, along with its borders */
     dlg_mouse_mkbigregion(0, 0, PAGE_LENGTH + 2, width, KEY_MAX, 1, 1, 1 /* lines */ );
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
 
     dlg_draw_buttons(dialog, PAGE_LENGTH + 2, 0, obj.buttons, button, FALSE, width);
@@ -814,7 +820,10 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 				 FALSE, width);
 		break;
 	    case DLGK_ENTER:
-		result = dlg_exit_buttoncode(button);
+		if (dialog_vars.nook)
+		    result = DLG_EXIT_OK;
+		else
+		    result = dlg_exit_buttoncode(button);
 		break;
 	    case DLGK_PAGE_FIRST:
 		if (!obj.begin_reached) {
@@ -824,7 +833,7 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 
 		    if (fpos > obj.fd_bytes_read) {
 			/* Yes, we have to read it in */
-			lseek_obj(&obj, 0, SEEK_SET);
+			lseek_obj(&obj, 0L, SEEK_SET);
 
 			read_high(&obj, BUF_SIZE);
 		    }
@@ -844,7 +853,7 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 		    read_high(&obj, BUF_SIZE);
 		}
 		obj.in_buf = obj.bytes_read;
-		back_lines(&obj, PAGE_LENGTH);
+		back_lines(&obj, (long) PAGE_LENGTH);
 		moved = TRUE;
 		break;
 	    case DLGK_GRID_UP:	/* Previous line */
@@ -905,14 +914,12 @@ dialog_textbox(const char *title, const char *file, int height, int width)
 		height = old_height;
 		width = old_width;
 		back_lines(&obj, obj.page_length);
-		moved = TRUE;
 		/* repaint */
 		dlg_clear();
 		dlg_del_window(dialog);
 		refresh();
 		dlg_mouse_free_regions();
 		goto retry;
-		break;
 #endif
 	    }
 	} else {

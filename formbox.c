@@ -1,14 +1,13 @@
 /*
- *  $Id: formbox.c,v 1.51 2005/12/20 00:25:59 tom Exp $
+ *  $Id: formbox.c,v 1.80 2011/10/20 23:34:21 tom Exp $
  *
  *  formbox.c -- implements the form (i.e, some pairs label/editbox)
  *
- *  Copyright 2003-2004,2005	Thomas E. Dickey
+ *  Copyright 2003-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -38,9 +37,19 @@
 #define ItemTextX(i)    items[LLEN(i) + 5]
 #define ItemTextFLen(i) items[LLEN(i) + 6]
 #define ItemTextILen(i) items[LLEN(i) + 7]
-#define ItemHelp(i)     (dialog_vars.item_help ? items[LLEN(i) + 8] : "")
+#define ItemHelp(i)     (dialog_vars.item_help ? items[LLEN(i) + 8] : dlg_strempty())
 
-#define isPassword(item) ((item)->type == 1)
+static bool
+is_readonly(DIALOG_FORMITEM * item)
+{
+    return ((item->type & 2) != 0) || (item->text_flen <= 0);
+}
+
+static bool
+is_hidden(DIALOG_FORMITEM * item)
+{
+    return ((item->type & 1) != 0);
+}
 
 static bool
 in_window(WINDOW *win, int scrollamt, int y)
@@ -89,17 +98,28 @@ print_item(WINDOW *win, DIALOG_FORMITEM * item, int scrollamt, bool choice)
 	}
     }
     if (item->text_len && ok_move(win, scrollamt, item->text_y, item->text_x)) {
+	chtype this_item_attribute;
+
 	len = item->text_len;
 	len = MIN(len, getmaxx(win) - item->text_x);
+
+	if (!is_readonly(item)) {
+	    this_item_attribute = choice
+		? form_active_text_attr
+		: form_text_attr;
+	} else {
+	    this_item_attribute = form_item_readonly_attr;
+	}
+
 	if (len > 0) {
 	    dlg_show_string(win,
 			    item->text,
 			    0,
-			    choice ? form_active_text_attr : form_text_attr,
+			    this_item_attribute,
 			    item->text_y - scrollamt,
 			    item->text_x,
 			    len,
-			    isPassword(item),
+			    is_hidden(item),
 			    FALSE);
 	    move_past(win, item->text_y - scrollamt, item->text_x + len);
 	    count = 1;
@@ -128,17 +148,27 @@ print_form(WINDOW *win, DIALOG_FORMITEM * item, int total, int scrollamt, int ch
 }
 
 static int
-set_choice(DIALOG_FORMITEM item[], int choice, int item_no)
+set_choice(DIALOG_FORMITEM item[], int choice, int item_no, bool * noneditable)
 {
+    int result = -1;
     int i;
-    if (item[choice].text_flen > 0)
-	return choice;
-    for (i = 0; i < item_no; i++) {
-	if (item[i].text_flen > 0)
-	    return i;
+
+    *noneditable = FALSE;
+    if (!is_readonly(&item[choice])) {
+	result = choice;
+    } else {
+	for (i = 0; i < item_no; i++) {
+	    if (!is_readonly(&(item[i]))) {
+		result = i;
+		break;
+	    }
+	}
+	if (result < 0) {
+	    *noneditable = TRUE;
+	    result = 0;
+	}
     }
-    dlg_exiterr("No field has flen > 0\n");
-    return -1;			/* Dummy, to make compiler happy */
+    return result;
 }
 
 /*
@@ -158,6 +188,34 @@ form_limit(DIALOG_FORMITEM item[])
     return limit;
 }
 
+static int
+is_first_field(DIALOG_FORMITEM item[], int choice)
+{
+    int count = 0;
+    while (choice >= 0) {
+	if (item[choice].text_flen > 0) {
+	    ++count;
+	}
+	--choice;
+    }
+
+    return (count == 1);
+}
+
+static int
+is_last_field(DIALOG_FORMITEM item[], int choice, int item_no)
+{
+    int count = 0;
+    while (choice < item_no) {
+	if (item[choice].text_flen > 0) {
+	    ++count;
+	}
+	++choice;
+    }
+
+    return (count == 1);
+}
+
 /*
  * Tab to the next field.
  */
@@ -174,15 +232,17 @@ tab_next(WINDOW *win,
     bool wrapped = FALSE;
 
     do {
-	*choice += stepsize;
-	if (*choice < 0) {
-	    *choice = item_no - 1;
-	    wrapped = TRUE;
-	}
-	if (*choice >= item_no) {
-	    *choice = 0;
-	    wrapped = TRUE;
-	}
+	do {
+	    *choice += stepsize;
+	    if (*choice < 0) {
+		*choice = item_no - 1;
+		wrapped = TRUE;
+	    } else if (*choice >= item_no) {
+		*choice = 0;
+		wrapped = TRUE;
+	    }
+	} while ((*choice != old_choice) && is_readonly(&(item[*choice])));
+
 	if (item[*choice].text_flen > 0) {
 	    int lo = MIN(item[*choice].name_y, item[*choice].text_y);
 	    int hi = MAX(item[*choice].name_y, item[*choice].text_y);
@@ -316,14 +376,11 @@ make_FORM_ELTs(DIALOG_FORMITEM * item,
 	 * to ensure it is big enough.
 	 */
 	if (item[i].text_flen > 0) {
-	    int max_len = MAX(item[i].text_ilen + 1, MAX_LEN);
+	    int max_len = dlg_max_input(MAX(item[i].text_ilen + 1, MAX_LEN));
 	    char *old_text = item[i].text;
 
-	    if (dialog_vars.max_input != 0 && dialog_vars.max_input < MAX_LEN)
-		max_len = dialog_vars.max_input;
-
-	    item[i].text = malloc(max_len + 1);
-	    assert_ptr(item[i].text, "dialog_form");
+	    item[i].text = dlg_malloc(char, (size_t) max_len + 1);
+	    assert_ptr(item[i].text, "make_FORM_ELTs");
 
 	    sprintf(item[i].text, "%.*s", item[i].text_ilen, old_text);
 
@@ -358,6 +415,37 @@ dlg_default_formitem(DIALOG_FORMITEM * items)
     return result;
 }
 
+#define sTEXT -1
+
+static int
+next_valid_buttonindex(int state, int extra, bool non_editable)
+{
+    state = dlg_next_ok_buttonindex(state, extra);
+    while (non_editable && state == sTEXT)
+	state = dlg_next_ok_buttonindex(state, sTEXT);
+    return state;
+}
+
+static int
+prev_valid_buttonindex(int state, int extra, bool non_editable)
+{
+    state = dlg_prev_ok_buttonindex(state, extra);
+    while (non_editable && state == sTEXT)
+	state = dlg_prev_ok_buttonindex(state, sTEXT);
+    return state;
+}
+
+#define NAVIGATE_BINDINGS \
+	DLG_KEYS_DATA( DLGK_FIELD_NEXT, TAB ), \
+	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_BTAB ), \
+	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  CHR_NEXT ), \
+	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_DOWN ), \
+	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_NEXT ), \
+	DLG_KEYS_DATA( DLGK_ITEM_PREV,  CHR_PREVIOUS ), \
+	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_PREVIOUS ), \
+	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_UP ), \
+	DLG_KEYS_DATA( DLGK_PAGE_NEXT,  KEY_NPAGE ), \
+	DLG_KEYS_DATA( DLGK_PAGE_PREV,  KEY_PPAGE )
 /*
  * Display a form for fulfill a number of fields
  */
@@ -373,18 +461,16 @@ dlg_form(const char *title,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
-	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
-	DLG_KEYS_DATA( DLGK_FIELD_NEXT, TAB ),
-	DLG_KEYS_DATA( DLGK_FIELD_PREV, KEY_BTAB ),
-	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  CHR_NEXT ),
-	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_DOWN ),
-	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  KEY_NEXT ),
-	DLG_KEYS_DATA( DLGK_ITEM_PREV,  CHR_PREVIOUS ),
-	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_PREVIOUS ),
-	DLG_KEYS_DATA( DLGK_ITEM_PREV,  KEY_UP ),
-	DLG_KEYS_DATA( DLGK_PAGE_NEXT,  KEY_NPAGE ),
-	DLG_KEYS_DATA( DLGK_PAGE_PREV,  KEY_PPAGE ),
+	NAVIGATE_BINDINGS,
+	END_KEYS_BINDING
+    };
+    static DLG_KEYS_BINDING binding2[] = {
+	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
+	ENTERKEY_BINDINGS,
+	NAVIGATE_BINDINGS,
 	END_KEYS_BINDING
     };
     /* *INDENT-ON* */
@@ -394,10 +480,9 @@ dlg_form(const char *title,
     int old_width = width;
 #endif
 
-#define sTEXT -1
-
     int form_width;
     int first = TRUE;
+    int first_trace = TRUE;
     int chr_offset = 0;
     int state = dialog_vars.defaultno ? dlg_defaultno_button() : sTEXT;
     int x, y, cur_x, cur_y, box_x, box_y;
@@ -413,12 +498,14 @@ dlg_form(const char *title,
     bool show_buttons = FALSE;
     bool scroll_changed = FALSE;
     bool field_changed = FALSE;
+    bool non_editable = FALSE;
     WINDOW *dialog, *form;
     char *prompt = dlg_strclone(cprompt);
     const char **buttons = dlg_ok_labels();
     DIALOG_FORMITEM *current;
 
     make_FORM_ELTs(items, item_no, &min_height, &min_width);
+    dlg_button_layout(buttons, &min_width);
     dlg_does_output();
     dlg_tab_correct_str(prompt);
 
@@ -456,25 +543,27 @@ dlg_form(const char *title,
 
     dlg_mouse_setbase(x, y);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
 
-    wattrset(dialog, dialog_attr);
+    (void) wattrset(dialog, dialog_attr);
     dlg_print_autowrap(dialog, prompt, height, width);
 
     form_width = width - 6;
     getyx(dialog, cur_y, cur_x);
+    (void) cur_x;
     box_y = cur_y + 1;
     box_x = (width - form_width) / 2 - 1;
 
     /* create new window for the form */
     form = dlg_sub_window(dialog, form_height, form_width, y + box_y + 1,
 			  x + box_x + 1);
+    dlg_register_window(form, "formfield", binding2);
 
     /* draw a box around the form items */
     dlg_draw_box(dialog, box_y, box_x, form_height + 2, form_width + 2,
-		 menubox_border_attr, menubox_attr);
+		 menubox_border_attr, menubox_border2_attr);
 
     /* register the new window, along with its borders */
     dlg_mouse_mkbigregion(getbegy(form) - getbegy(dialog),
@@ -486,19 +575,27 @@ dlg_form(const char *title,
     show_buttons = TRUE;
     scroll_changed = TRUE;
 
-    choice = set_choice(items, choice, item_no);
+    choice = set_choice(items, choice, item_no, &non_editable);
     current = &items[choice];
+    if (non_editable)
+	state = next_valid_buttonindex(state, sTEXT, non_editable);
 
     while (result == DLG_EXIT_UNKNOWN) {
 	int edit = FALSE;
 
 	if (scroll_changed) {
 	    print_form(form, items, item_no, scrollamt, choice);
-	    dlg_draw_arrows(dialog, scrollamt,
-			    scrollamt + form_height < item_no,
-			    box_x + 1,
-			    box_y,
-			    box_y + form_height + 1);
+	    dlg_draw_scrollbar(dialog,
+			       scrollamt,
+			       scrollamt,
+			       scrollamt + form_height + 1,
+			       min_height,
+			       box_x + 1,
+			       box_x + form_width,
+			       box_y,
+			       box_y + form_height + 1,
+			       menubox_border2_attr,
+			       menubox_border_attr);
 	    scroll_changed = FALSE;
 	}
 
@@ -512,6 +609,11 @@ dlg_form(const char *title,
 	    show_buttons = FALSE;
 	}
 
+	if (first_trace) {
+	    first_trace = FALSE;
+	    dlg_trace_win(dialog);
+	}
+
 	if (field_changed || state == sTEXT) {
 	    if (field_changed)
 		chr_offset = 0;
@@ -523,11 +625,11 @@ dlg_form(const char *title,
 			    current->text_y - scrollamt,
 			    current->text_x,
 			    current->text_len,
-			    isPassword(current), first);
+			    is_hidden(current), first);
 	    field_changed = FALSE;
 	}
 
-	key = dlg_mouse_wgetch(dialog, &fkey);
+	key = dlg_mouse_wgetch((state == sTEXT) ? form : dialog, &fkey);
 	if (dlg_result_key(key, fkey, &result))
 	    break;
 
@@ -568,7 +670,7 @@ dlg_form(const char *title,
 
 	    case DLGK_ENTER:
 		dlg_del_window(dialog);
-		result = (state >= 0) ? dlg_ok_buttoncode(state) : DLG_EXIT_OK;
+		result = (state >= 0) ? dlg_enter_buttoncode(state) : DLG_EXIT_OK;
 		continue;
 
 	    case DLGK_GRID_LEFT:
@@ -581,18 +683,37 @@ dlg_form(const char *title,
 		    move_by = -1;
 		    break;
 		} else {
-		    state = dlg_prev_ok_buttonindex(state, 0);
+		    state = prev_valid_buttonindex(state, 0, non_editable);
 		    show_buttons = TRUE;
 		    continue;
 		}
 
+	    case DLGK_FORM_PREV:
+		if (state == sTEXT && !is_first_field(items, choice)) {
+		    do_tab = TRUE;
+		    move_by = -1;
+		    break;
+		} else {
+		    int old_state = state;
+		    state = prev_valid_buttonindex(state, sTEXT, non_editable);
+		    show_buttons = TRUE;
+		    if (old_state >= 0 && state == sTEXT) {
+			new_choice = item_no - 1;
+			if (choice != new_choice) {
+			    print_item(form, items + choice, scrollamt, FALSE);
+			    choice = new_choice;
+			}
+		    }
+		    continue;
+		}
+
 	    case DLGK_FIELD_PREV:
-		state = dlg_prev_ok_buttonindex(state, sTEXT);
+		state = prev_valid_buttonindex(state, sTEXT, non_editable);
 		show_buttons = TRUE;
 		continue;
 
 	    case DLGK_FIELD_NEXT:
-		state = dlg_next_ok_buttonindex(state, sTEXT);
+		state = next_valid_buttonindex(state, sTEXT, non_editable);
 		show_buttons = TRUE;
 		continue;
 
@@ -607,8 +728,23 @@ dlg_form(const char *title,
 		    move_by = 1;
 		    break;
 		} else {
-		    state = dlg_next_ok_buttonindex(state, 0);
+		    state = next_valid_buttonindex(state, 0, non_editable);
 		    show_buttons = TRUE;
+		    continue;
+		}
+
+	    case DLGK_FORM_NEXT:
+		if (state == sTEXT && !is_last_field(items, choice, item_no)) {
+		    do_tab = TRUE;
+		    move_by = 1;
+		    break;
+		} else {
+		    state = next_valid_buttonindex(state, sTEXT, non_editable);
+		    show_buttons = TRUE;
+		    if (state == sTEXT && choice) {
+			print_item(form, items + choice, scrollamt, FALSE);
+			choice = 0;
+		    }
 		    continue;
 		}
 
@@ -623,7 +759,6 @@ dlg_form(const char *title,
 		refresh();
 		dlg_mouse_free_regions();
 		goto retry;
-		break;
 #endif
 	    default:
 #if USE_MOUSE
@@ -640,14 +775,18 @@ dlg_form(const char *title,
 				&& (items[n].name_x + items[n].name_len > col
 				    || (items[n].name_y == items[n].text_y
 					&& items[n].text_x > col))) {
-				field_changed = TRUE;
-				break;
+				if (!is_readonly(&(items[n]))) {
+				    field_changed = TRUE;
+				    break;
+				}
 			    }
 			    if (items[n].text_y == row
 				&& items[n].text_x <= col
 				&& items[n].text_x + items[n].text_ilen > col) {
-				field_changed = TRUE;
-				break;
+				if (!is_readonly(&(items[n]))) {
+				    field_changed = TRUE;
+				    break;
+				}
 			    }
 			}
 			if (field_changed) {
@@ -696,14 +835,16 @@ dlg_form(const char *title,
 	}
 
 	if (state == sTEXT) {	/* Input box selected */
-	    edit = dlg_edit_string(current->text, &chr_offset, key, fkey, first);
+	    if (!is_readonly(current))
+		edit = dlg_edit_string(current->text, &chr_offset, key,
+				       fkey, first);
 	    if (edit) {
 		dlg_show_string(form, current->text, chr_offset,
 				form_active_text_attr,
 				current->text_y - scrollamt,
 				current->text_x,
 				current->text_len,
-				isPassword(current), first);
+				is_hidden(current), first);
 		continue;
 	    }
 	}
@@ -714,7 +855,7 @@ dlg_form(const char *title,
     dlg_del_window(dialog);
     free(prompt);
 
-    *current_item = scrollamt + choice;
+    *current_item = choice;
     return result;
 }
 
@@ -730,7 +871,7 @@ dlg_free_formitems(DIALOG_FORMITEM * items)
 	    free(items[n].name);
 	if (items[n].text_free)
 	    free(items[n].text);
-	if (items[n].help_free)
+	if (items[n].help_free && items[n].help != dlg_strempty())
 	    free(items[n].help);
     }
     free(items);
@@ -739,8 +880,8 @@ dlg_free_formitems(DIALOG_FORMITEM * items)
 /*
  * The script accepts values beginning at 1, while curses starts at 0.
  */
-static int
-ordinate(const char *s)
+int
+dlg_ordinate(const char *s)
 {
     int result = atoi(s);
     if (result > 0)
@@ -763,26 +904,30 @@ dialog_form(const char *title,
     int choice;
     int i;
     DIALOG_FORMITEM *listitems;
+    DIALOG_VARS save_vars;
     bool show_status = FALSE;
 
-    listitems = calloc(item_no + 1, sizeof(*listitems));
-    assert_ptr(listitems, "dialog_menu");
+    dlg_save_vars(&save_vars);
+    dialog_vars.separate_output = TRUE;
+
+    listitems = dlg_calloc(DIALOG_FORMITEM, (size_t) item_no + 1);
+    assert_ptr(listitems, "dialog_form");
 
     for (i = 0; i < item_no; ++i) {
 	listitems[i].type = dialog_vars.formitem_type;
 	listitems[i].name = ItemName(i);
-	listitems[i].name_len = strlen(ItemName(i));
-	listitems[i].name_y = ordinate(ItemNameY(i));
-	listitems[i].name_x = ordinate(ItemNameX(i));
+	listitems[i].name_len = (int) strlen(ItemName(i));
+	listitems[i].name_y = dlg_ordinate(ItemNameY(i));
+	listitems[i].name_x = dlg_ordinate(ItemNameX(i));
 	listitems[i].text = ItemText(i);
-	listitems[i].text_len = strlen(ItemText(i));
-	listitems[i].text_y = ordinate(ItemTextY(i));
-	listitems[i].text_x = ordinate(ItemTextX(i));
+	listitems[i].text_len = (int) strlen(ItemText(i));
+	listitems[i].text_y = dlg_ordinate(ItemTextY(i));
+	listitems[i].text_x = dlg_ordinate(ItemTextX(i));
 	listitems[i].text_flen = atoi(ItemTextFLen(i));
 	listitems[i].text_ilen = atoi(ItemTextILen(i));
-	listitems[i].help = (dialog_vars.item_help) ? ItemHelp(i) : "";
-
-	listitems[i].text_flen = real_length(&listitems[i]);
+	listitems[i].help = ((dialog_vars.item_help)
+			     ? ItemHelp(i)
+			     : dlg_strempty());
     }
 
     result = dlg_form(title,
@@ -803,25 +948,26 @@ dialog_form(const char *title,
 	dlg_add_result("HELP ");
 	show_status = dialog_vars.help_status;
 	if (USE_ITEM_HELP(listitems[choice].help)) {
-	    dlg_add_result(listitems[choice].help);
+	    dlg_add_string(listitems[choice].help);
 	    result = DLG_EXIT_ITEM_HELP;
 	} else {
-	    dlg_add_result(listitems[choice].name);
+	    dlg_add_string(listitems[choice].name);
 	}
 	if (show_status)
-	    dlg_add_result("\n");
+	    dlg_add_separator();
 	break;
     }
     if (show_status) {
 	for (i = 0; i < item_no; i++) {
 	    if (listitems[i].text_flen > 0) {
-		dlg_add_result(listitems[i].text);
-		dlg_add_result("\n");
+		dlg_add_string(listitems[i].text);
+		dlg_add_separator();
 	    }
 	}
     }
 
     dlg_free_formitems(listitems);
+    dlg_restore_vars(&save_vars);
 
     return result;
 }

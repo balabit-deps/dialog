@@ -1,14 +1,13 @@
 /*
- *  $Id: pause.c,v 1.14 2005/12/07 00:01:27 tom Exp $
+ *  $Id: pause.c,v 1.33 2011/10/20 23:35:17 tom Exp $
  *
  *  pause.c -- implements the pause dialog
  *
- *  Copyright 2004,2005	Thomas E. Dickey
+ *  Copyright 2004-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -30,13 +29,20 @@
 
 #define MY_TIMEOUT 50
 
+#define MIN_HIGH (4)
+#define MIN_WIDE (10 + 2 * (2 + MARGIN))
+#define BTN_HIGH (1 + 2 * MARGIN)
+
 /*
  * This is like gauge, but can be interrupted.
  *
  * A pause box displays a meter along the bottom of the box.  The meter
  * indicates how many seconds remain until the end of the pause.  The pause
- * exits when timeout is reached (status OK) or the user presses the Exit
- * button (status CANCEL).
+ * exits when timeout is reached (status OK) or the user presses:
+ *   OK button (status OK) 
+ *   CANCEL button (status CANCEL)
+ *   Esc key (status ESC)
+ *
  */
 int
 dialog_pause(const char *title,
@@ -47,6 +53,7 @@ dialog_pause(const char *title,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_ENTER,	' ' ),
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_DOWN ),
@@ -68,9 +75,13 @@ dialog_pause(const char *title,
     int button = 0;
     int seconds_orig;
     WINDOW *dialog;
-    const char **buttons = dlg_exit_label();
+    const char **buttons = dlg_ok_labels();
+    bool have_buttons = (dlg_button_count(buttons) != 0);
+    bool first;
     int key = 0, fkey;
     int result = DLG_EXIT_UNKNOWN;
+    int button_high = (have_buttons ? BTN_HIGH : MARGIN);
+    int gauge_y;
     char *prompt = dlg_strclone(cprompt);
 
     curs_set(0);
@@ -85,7 +96,17 @@ dialog_pause(const char *title,
     width = old_width;
 #endif
 
-    dlg_auto_size(title, prompt, &height, &width, 0, 0);
+    if (have_buttons) {
+	dlg_auto_size(title, prompt, &height, &width,
+		      MIN_HIGH,
+		      MIN_WIDE);
+	dlg_button_layout(buttons, &width);
+    } else {
+	dlg_auto_size(title, prompt, &height, &width,
+		      MIN_HIGH + MARGIN - BTN_HIGH,
+		      MIN_WIDE);
+    }
+    gauge_y = height - button_high - (1 + 2 * MARGIN);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -100,33 +121,36 @@ dialog_pause(const char *title,
     dlg_mouse_setbase(x, y);
     nodelay(dialog, TRUE);
 
+    first = TRUE;
     do {
 	(void) werase(dialog);
-	dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
+	dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
 
 	dlg_draw_title(dialog, title);
+	dlg_draw_helpline(dialog, FALSE);
 
-	wattrset(dialog, dialog_attr);
+	(void) wattrset(dialog, dialog_attr);
 	dlg_print_autowrap(dialog, prompt, height, width);
 
-	dlg_draw_box(dialog,
-		     height - 6, 2 + MARGIN,
-		     2 + MARGIN, width - 2 * (2 + MARGIN),
-		     dialog_attr,
-		     border_attr);
+	dlg_draw_box2(dialog,
+		      gauge_y, 2 + MARGIN,
+		      2 + MARGIN, width - 2 * (2 + MARGIN),
+		      dialog_attr,
+		      border_attr,
+		      border2_attr);
 
 	/*
 	 * Clear the area for the progress bar by filling it with spaces
 	 * in the title-attribute, and write the percentage with that
 	 * attribute.
 	 */
-	(void) wmove(dialog, height - 5, 4);
-	wattrset(dialog, title_attr);
+	(void) wmove(dialog, gauge_y + MARGIN, 4);
+	(void) wattrset(dialog, title_attr);
 
 	for (i = 0; i < (width - 2 * (3 + MARGIN)); i++)
 	    (void) waddch(dialog, ' ');
 
-	(void) wmove(dialog, height - 5, (width / 2) - 2);
+	(void) wmove(dialog, gauge_y + MARGIN, (width / 2) - 2);
 	(void) wprintw(dialog, "%3d", seconds);
 
 	/*
@@ -138,9 +162,9 @@ dialog_pause(const char *title,
 	if ((title_attr & A_REVERSE) != 0) {
 	    wattroff(dialog, A_REVERSE);
 	} else {
-	    wattrset(dialog, A_REVERSE);
+	    (void) wattrset(dialog, A_REVERSE);
 	}
-	(void) wmove(dialog, height - 5, 4);
+	(void) wmove(dialog, gauge_y + MARGIN, 4);
 	for (i = 0; i < x; i++) {
 	    chtype ch = winch(dialog);
 	    if (title_attr & A_REVERSE) {
@@ -149,10 +173,16 @@ dialog_pause(const char *title,
 	    (void) waddch(dialog, ch);
 	}
 
-	dlg_draw_bottom_box(dialog);
 	mouse_mkbutton(height - 2, width / 2 - 4, 6, '\n');
-	dlg_draw_buttons(dialog, height - 2, 0, buttons, button, FALSE, width);
-	(void) wrefresh(dialog);
+	if (have_buttons) {
+	    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
+	    dlg_draw_buttons(dialog, height - 2, 0, buttons, button, FALSE, width);
+	}
+	if (first) {
+	    (void) wrefresh(dialog);
+	    dlg_trace_win(dialog);
+	    first = FALSE;
+	}
 
 	for (step = 0;
 	     (result == DLG_EXIT_UNKNOWN) && (step < 1000);
@@ -160,8 +190,12 @@ dialog_pause(const char *title,
 
 	    napms(MY_TIMEOUT);
 	    key = dlg_mouse_wgetch_nowait(dialog, &fkey);
-	    if (dlg_result_key(key, fkey, &result))
-		break;
+	    if (key == ERR) {
+		;		/* ignore errors in nodelay mode */
+	    } else {
+		if (dlg_result_key(key, fkey, &result))
+		    break;
+	    }
 
 	    switch (key) {
 #ifdef KEY_RESIZE
@@ -190,28 +224,26 @@ dialog_pause(const char *title,
 				 FALSE, width);
 		break;
 	    case DLGK_ENTER:
-		/* Do not use dlg_exit_buttoncode() since we want to return
-		 * a cancel rather than ok if the timeout has not expired.
-		 */
-		result = button ? DLG_EXIT_HELP : DLG_EXIT_CANCEL;
+		result = dlg_enter_buttoncode(button);
 		break;
 	    case DLGK_MOUSE(0):
-		result = DLG_EXIT_CANCEL;
+		result = DLG_EXIT_OK;
 		break;
 	    case DLGK_MOUSE(1):
-		result = DLG_EXIT_HELP;
+		result = DLG_EXIT_CANCEL;
 		break;
 	    case ERR:
 		break;
 	    default:
-		result = DLG_EXIT_CANCEL;
 		break;
 	    }
 	}
     } while ((result == DLG_EXIT_UNKNOWN) && (seconds-- > 0));
 
+    nodelay(dialog, FALSE);
     curs_set(1);
+    dlg_mouse_free_regions();
     dlg_del_window(dialog);
     free(prompt);
-    return (result);
+    return ((result == DLG_EXIT_UNKNOWN) ? DLG_EXIT_OK : result);
 }

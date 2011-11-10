@@ -1,14 +1,13 @@
 /*
- *  $Id: menubox.c,v 1.100 2006/01/02 01:51:18 tom Exp $
+ *  $Id: menubox.c,v 1.129 2011/10/20 21:15:36 tom Exp $
  *
  *  menubox.c -- implements the menu box
  *
- *  Copyright 2000-2005,2006	Thomas E. Dickey
+ *  Copyright 2000-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public Licens, version 2.1e
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -36,6 +35,8 @@ typedef enum {
     Editing
 } Mode;
 
+#define MIN_HIGH  (1 + (5 * MARGIN))
+
 #define INPUT_ROWS     3	/* rows per inputmenu entry */
 
 #define LLEN(n) ((n) * MENUBOX_TAGS)
@@ -43,9 +44,9 @@ typedef enum {
 #define ItemText(i)    items[LLEN(i) + 1]
 #define ItemHelp(i)    items[LLEN(i) + 2]
 
-#define RowHeight(i) (dialog_vars.input_menu ? ((i) * INPUT_ROWS) : ((i) * 1))
-#define ItemToRow(i) (dialog_vars.input_menu ? ((i) * INPUT_ROWS + 1) : (i))
-#define RowToItem(i) (dialog_vars.input_menu ? ((i) / INPUT_ROWS + 0) : (i))
+#define RowHeight(i) (is_inputmenu ? ((i) * INPUT_ROWS) : ((i) * 1))
+#define ItemToRow(i) (is_inputmenu ? ((i) * INPUT_ROWS + 1) : (i))
+#define RowToItem(i) (is_inputmenu ? ((i) / INPUT_ROWS + 0) : (i))
 
 static void
 print_arrows(WINDOW *win,
@@ -56,11 +57,17 @@ print_arrows(WINDOW *win,
 	     int item_no,
 	     int menu_height)
 {
-    dlg_draw_arrows(win, scrollamt,
-		    scrollamt + max_choice < item_no,
-		    box_x + tag_x + 1,
-		    box_y,
-		    box_y + menu_height + 1);
+    dlg_draw_scrollbar(win,
+		       scrollamt,
+		       scrollamt,
+		       scrollamt + max_choice,
+		       item_no,
+		       box_x,
+		       box_x + menu_width,
+		       box_y,
+		       box_y + menu_height + 1,
+		       menubox_border2_attr,
+		       menubox_border_attr);
 }
 
 /*
@@ -70,20 +77,18 @@ static void
 print_tag(WINDOW *win,
 	  DIALOG_LISTITEM * item,
 	  int choice,
-	  Mode selected)
+	  Mode selected,
+	  bool is_inputmenu)
 {
     int my_x = item_x;
     int my_y = ItemToRow(choice);
     int tag_width = (my_x - tag_x - GUTTER);
-    const int *cols;
     const int *indx;
     int limit;
-    unsigned prefix;
+    int prefix;
 
-    cols = dlg_index_columns(item->name);
     indx = dlg_index_wchars(item->name);
-    limit = dlg_count_wchars(item->name);
-    prefix = indx[1] - indx[0];
+    prefix = (indx[1] - indx[0]);
 
     /* highlight first char of the tag to be special */
     (void) wmove(win, my_y, tag_x);
@@ -92,7 +97,7 @@ print_tag(WINDOW *win,
 	(void) waddnstr(win, item->name, prefix);
     /* print rest of the string */
     wattrset(win, selected ? tag_selected_attr : tag_attr);
-    if (strlen(item->name) > prefix) {
+    if ((int) strlen(item->name) > prefix) {
 	limit = dlg_limit_columns(item->name, tag_width, 1);
 	if (limit > 0)
 	    (void) waddnstr(win, item->name + indx[1], indx[limit] - indx[1]);
@@ -106,9 +111,10 @@ static void
 print_item(WINDOW *win,
 	   DIALOG_LISTITEM * items,
 	   int choice,
-	   Mode selected)
+	   Mode selected,
+	   bool is_inputmenu)
 {
-    chtype save = getattrs(win);
+    chtype save = dlg_get_attrs(win);
     int n;
     int my_width = menu_width;
     int my_x = item_x;
@@ -134,7 +140,7 @@ print_item(WINDOW *win,
     }
 
     /* Clear 'residue' of last item and mark current current item */
-    if (dialog_vars.input_menu) {
+    if (is_inputmenu) {
 	wattrset(win, (selected != Unselected) ? item_selected_attr : item_attr);
 	for (n = my_y - 1; n < my_y + INPUT_ROWS - 1; n++) {
 	    wmove(win, n, 0);
@@ -146,11 +152,11 @@ print_item(WINDOW *win,
 	wprintw(win, "%*s", my_width, " ");
     }
 
-    print_tag(win, items, choice, selected);
+    print_tag(win, items, choice, selected, is_inputmenu);
 
     /* Draw the input field box (only for inputmenu) */
     (void) wmove(win, my_y, my_x);
-    if (dialog_vars.input_menu) {
+    if (is_inputmenu) {
 	my_width -= 1;
 	dlg_draw_box(win, my_y - 1, my_x, INPUT_ROWS, my_width - my_x - tag_x,
 		     bordchar,
@@ -179,23 +185,25 @@ input_menu_edit(WINDOW *win,
 		int choice,
 		char **resultp)
 {
-    chtype save = getattrs(win);
+    chtype save = dlg_get_attrs(win);
     char *result;
     int offset = 0;
     int key = 0, fkey = 0;
     int first = TRUE;
     /* see above */
+    bool is_inputmenu = TRUE;
     int y = ItemToRow(choice);
     int code = TRUE;
+    int max_len = dlg_max_input(MAX((int) strlen(items->text) + 1, MAX_LEN));
 
-    result = malloc(dialog_vars.max_input);
+    result = dlg_malloc(char, (size_t) max_len);
     assert_ptr(result, "input_menu_edit");
 
     /* original item is used to initialize the input string. */
     result[0] = '\0';
     strcpy(result, items->text);
 
-    print_item(win, items, choice, Editing);
+    print_item(win, items, choice, Editing, TRUE);
 
     /* taken out of inputbox.c - but somewhat modified */
     for (;;) {
@@ -213,7 +221,7 @@ input_menu_edit(WINDOW *win,
 	    break;
 	}
     }
-    print_item(win, items, choice, Selected);
+    print_item(win, items, choice, Selected, TRUE);
     wattrset(win, save);
 
     *resultp = result;
@@ -226,31 +234,40 @@ handle_button(int code, DIALOG_LISTITEM * items, int choice)
     switch (code) {
     case DLG_EXIT_OK:		/* FALLTHRU */
     case DLG_EXIT_EXTRA:
-	dlg_add_result(items[choice].name);
+	dlg_add_string(items[choice].name);
 	break;
     case DLG_EXIT_HELP:
 	dlg_add_result("HELP ");
 	if (USE_ITEM_HELP(items[choice].help)) {
-	    dlg_add_result(items[choice].help);
+	    dlg_add_string(items[choice].help);
 	    code = DLG_EXIT_ITEM_HELP;
 	} else {
-	    dlg_add_result(items[choice].name);
+	    dlg_add_string(items[choice].name);
 	}
 	break;
     }
     return code;
 }
 
-static int
+int
 dlg_renamed_menutext(DIALOG_LISTITEM * items, int current, char *newtext)
 {
     if (dialog_vars.input_result)
 	dialog_vars.input_result[0] = '\0';
     dlg_add_result("RENAMED ");
-    dlg_add_result(items[current].name);
+    dlg_add_string(items[current].name);
     dlg_add_result(" ");
-    dlg_add_result(newtext);
+    dlg_add_string(newtext);
     return DLG_EXIT_EXTRA;
+}
+
+int
+dlg_dummy_menutext(DIALOG_LISTITEM * items, int current, char *newtext)
+{
+    (void) items;
+    (void) current;
+    (void) newtext;
+    return DLG_EXIT_ERROR;
 }
 
 /*
@@ -271,6 +288,7 @@ dlg_menu(const char *title,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	' ' ),
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_RIGHT ),
@@ -279,8 +297,10 @@ dlg_menu(const char *title,
 	DLG_KEYS_DATA( DLGK_FIELD_PREV,	KEY_LEFT ),
 	DLG_KEYS_DATA( DLGK_ITEM_NEXT,	'+' ),
 	DLG_KEYS_DATA( DLGK_ITEM_NEXT,	KEY_DOWN ),
+	DLG_KEYS_DATA( DLGK_ITEM_NEXT,  CHR_NEXT ),
 	DLG_KEYS_DATA( DLGK_ITEM_PREV,	'-' ),
 	DLG_KEYS_DATA( DLGK_ITEM_PREV,	KEY_UP ),
+	DLG_KEYS_DATA( DLGK_ITEM_PREV,  CHR_PREVIOUS ),
 	DLG_KEYS_DATA( DLGK_PAGE_FIRST,	KEY_HOME ),
 	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_END ),
 	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_LL ),
@@ -290,6 +310,7 @@ dlg_menu(const char *title,
     };
     static DLG_KEYS_BINDING binding2[] = {
 	INPUTSTR_BINDINGS,
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	END_KEYS_BINDING
     };
@@ -307,10 +328,12 @@ dlg_menu(const char *title,
     int scrollamt = 0;
     int max_choice, min_width;
     int found;
-    int use_width, name_width, text_width;
+    int use_height, use_width, name_width, text_width;
     WINDOW *dialog, *menu;
     char *prompt = dlg_strclone(cprompt);
     const char **buttons = dlg_ok_labels();
+    bool is_inputmenu = ((rename_menutext != 0)
+			 && (rename_menutext != dlg_dummy_menutext));
 
     dlg_does_output();
     dlg_tab_correct_str(prompt);
@@ -319,22 +342,18 @@ dlg_menu(const char *title,
   retry:
 #endif
 
-    if (menu_height == 0) {
+    use_height = menu_height;
+    if (use_height == 0) {
 	min_width = dlg_calc_list_width(item_no, items) + 10;
 	/* calculate height without items (4) */
-	dlg_auto_size(title, prompt, &height, &width, 4, MAX(26, min_width));
-	dlg_calc_listh(&height, &menu_height, item_no);
+	dlg_auto_size(title, prompt, &height, &width, MIN_HIGH, MAX(26, min_width));
+	dlg_calc_listh(&height, &use_height, item_no);
     } else {
-	dlg_auto_size(title, prompt, &height, &width, 4 + menu_height, 26);
+	dlg_auto_size(title, prompt, &height, &width, MIN_HIGH + use_height, 26);
     }
+    dlg_button_layout(buttons, &width);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
-
-    /* Find out maximal number of displayable items at once. */
-    max_choice = MIN(menu_height,
-		     RowHeight(item_no));
-    if (dialog_vars.input_menu)
-	max_choice /= INPUT_ROWS;
 
     x = dlg_box_x_ordinate(width);
     y = dlg_box_y_ordinate(height);
@@ -345,8 +364,8 @@ dlg_menu(const char *title,
 
     dlg_mouse_setbase(x, y);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
-    dlg_draw_bottom_box(dialog);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
+    dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
     dlg_draw_title(dialog, title);
 
     wattrset(dialog, dialog_attr);
@@ -357,16 +376,31 @@ dlg_menu(const char *title,
     box_y = cur_y + 1;
     box_x = (width - menu_width) / 2 - 1;
 
+    /*
+     * After displaying the prompt, we know how much space we really have.
+     * Limit the list to avoid overwriting the ok-button.
+     */
+    if (use_height + MIN_HIGH > height - cur_y)
+	use_height = height - MIN_HIGH - cur_y;
+    if (use_height <= 0)
+	use_height = 1;
+
+    /* Find out maximal number of displayable items at once. */
+    max_choice = MIN(use_height,
+		     RowHeight(item_no));
+    if (is_inputmenu)
+	max_choice /= INPUT_ROWS;
+
     /* create new window for the menu */
-    menu = dlg_sub_window(dialog, menu_height, menu_width,
+    menu = dlg_sub_window(dialog, use_height, menu_width,
 			  y + box_y + 1,
 			  x + box_x + 1);
     dlg_register_window(menu, "menu", binding2);
     dlg_register_buttons(menu, "menu", buttons);
 
     /* draw a box around the menu items */
-    dlg_draw_box(dialog, box_y, box_x, menu_height + 2, menu_width + 2,
-		 menubox_border_attr, menubox_attr);
+    dlg_draw_box(dialog, box_y, box_x, use_height + 2, menu_width + 2,
+		 menubox_border_attr, menubox_border2_attr);
 
     name_width = 0;
     text_width = 0;
@@ -397,7 +431,7 @@ dlg_menu(const char *title,
 	text_width = use_width - name_width;
     }
 
-    tag_x = (dialog_vars.input_menu
+    tag_x = (is_inputmenu
 	     ? 0
 	     : (use_width - text_width - name_width) / 2);
     item_x = name_width + tag_x + GUTTER;
@@ -412,18 +446,20 @@ dlg_menu(const char *title,
 	print_item(menu,
 		   &items[i + scrollamt],
 		   i,
-		   (i == choice) ? Selected : Unselected);
+		   (i == choice) ? Selected : Unselected,
+		   is_inputmenu);
     }
     (void) wnoutrefresh(menu);
 
     /* register the new window, along with its borders */
-    dlg_mouse_mkbigregion(box_y + 1, box_x, menu_height + 2, menu_width + 2,
+    dlg_mouse_mkbigregion(box_y + 1, box_x, use_height + 2, menu_width + 2,
 			  KEY_MAX, 1, 1, 1 /* by lines */ );
 
-    print_arrows(dialog, box_x, box_y, scrollamt, max_choice, item_no, menu_height);
+    print_arrows(dialog, box_x, box_y, scrollamt, max_choice, item_no, use_height);
 
     dlg_draw_buttons(dialog, height - 2, 0, buttons, button, FALSE, width);
 
+    dlg_trace_win(dialog);
     while (result == DLG_EXIT_UNKNOWN) {
 	if (button < 0)		/* --visit-items */
 	    wmove(dialog, box_y + ItemToRow(choice) + 1, box_x + tag_x + 1);
@@ -547,22 +583,27 @@ dlg_menu(const char *title,
 		     * in version 5.x
 		     */
 		    if (i == -1) {
-			if (menu_height > 1) {
+			if (use_height > 1) {
 			    /* De-highlight current first item */
-			    print_item(menu, &items[scrollamt], 0, Unselected);
+			    print_item(menu,
+				       &items[scrollamt],
+				       0, Unselected, is_inputmenu);
 			    scrollok(menu, TRUE);
 			    wscrl(menu, -RowHeight(1));
 			    scrollok(menu, FALSE);
 			}
 			scrollamt--;
-			print_item(menu, &items[scrollamt], 0, Selected);
+			print_item(menu,
+				   &items[scrollamt],
+				   0, Selected, is_inputmenu);
 		    } else if (i == max_choice) {
-			if (menu_height > 1) {
+			if (use_height > 1) {
 			    /* De-highlight current last item before scrolling up */
 			    print_item(menu,
 				       &items[scrollamt + max_choice - 1],
 				       max_choice - 1,
-				       Unselected);
+				       Unselected,
+				       is_inputmenu);
 			    scrollok(menu, TRUE);
 			    wscrl(menu, RowHeight(1));
 			    scrollok(menu, FALSE);
@@ -570,7 +611,8 @@ dlg_menu(const char *title,
 			scrollamt++;
 			print_item(menu,
 				   &items[scrollamt + max_choice - 1],
-				   max_choice - 1, TRUE);
+				   max_choice - 1, TRUE,
+				   is_inputmenu);
 		    } else
 #endif
 		    {
@@ -585,16 +627,17 @@ dlg_menu(const char *title,
 			    print_item(menu,
 				       &items[scrollamt + i],
 				       i,
-				       (i == choice) ? Selected : Unselected);
+				       (i == choice) ? Selected : Unselected,
+				       is_inputmenu);
 			}
 		    }
 		    /* Clean bottom lines */
-		    if (dialog_vars.input_menu) {
+		    if (is_inputmenu) {
 			int spare_lines, x_count;
-			spare_lines = menu_height % INPUT_ROWS;
+			spare_lines = use_height % INPUT_ROWS;
 			wattrset(menu, menubox_attr);
 			for (; spare_lines; spare_lines--) {
-			    wmove(menu, menu_height - spare_lines, 0);
+			    wmove(menu, use_height - spare_lines, 0);
 			    for (x_count = 0; x_count < menu_width;
 				 x_count++) {
 				waddch(menu, ' ');
@@ -604,20 +647,25 @@ dlg_menu(const char *title,
 		    (void) wnoutrefresh(menu);
 		    print_arrows(dialog,
 				 box_x, box_y,
-				 scrollamt, max_choice, item_no, menu_height);
+				 scrollamt, max_choice, item_no, use_height);
 		} else {
 		    /* De-highlight current item */
 		    print_item(menu,
 			       &items[scrollamt + choice],
 			       choice,
-			       Unselected);
+			       Unselected,
+			       is_inputmenu);
 		    /* Highlight new item */
 		    choice = i;
 		    print_item(menu,
 			       &items[scrollamt + choice],
 			       choice,
-			       Selected);
+			       Selected,
+			       is_inputmenu);
 		    (void) wnoutrefresh(menu);
+		    print_arrows(dialog,
+				 box_x, box_y,
+				 scrollamt, max_choice, item_no, use_height);
 		    (void) wmove(dialog, cur_y, cur_x);
 		    wrefresh(dialog);
 		}
@@ -638,21 +686,16 @@ dlg_menu(const char *title,
 				 FALSE, width);
 		break;
 	    case DLGK_ENTER:
-		result = dlg_ok_buttoncode(button);
+		result = dlg_enter_buttoncode(button);
 
 		/*
 		 * If dlg_menu() is called from dialog_menu(), we want to
-		 * capture the results into dialog_vars.input_result, but not
-		 * if dlg_menu() is called directly from an application.  We
-		 * can check this by testing if rename_menutext is the function
-		 * pointer owned by dialog_menu().  It would be nicer to have
-		 * this logic inside dialog_menu(), but that cannot be done
-		 * since we would lose compatibility for the results reported
-		 * after input_menu_edit().
+		 * capture the results into dialog_vars.input_result.
 		 */
 		if (result == DLG_EXIT_ERROR) {
 		    result = DLG_EXIT_UNKNOWN;
-		} else if (rename_menutext == dlg_renamed_menutext) {
+		} else if (is_inputmenu
+			   || rename_menutext == dlg_dummy_menutext) {
 		    result = handle_button(result,
 					   items,
 					   scrollamt + choice);
@@ -667,7 +710,7 @@ dlg_menu(const char *title,
 		 * "Unknown", update the list item only.  A direct caller of
 		 * dlg_menu() can free the renamed value - we cannot.
 		 */
-		if (rename_menutext != 0 && result == DLG_EXIT_EXTRA) {
+		if (is_inputmenu && result == DLG_EXIT_EXTRA) {
 		    char *tmp;
 
 		    if (input_menu_edit(menu,
@@ -685,7 +728,8 @@ dlg_menu(const char *title,
 			print_item(menu,
 				   &items[scrollamt + choice],
 				   choice,
-				   Selected);
+				   Selected,
+				   is_inputmenu);
 			(void) wnoutrefresh(menu);
 			free(tmp);
 		    }
@@ -707,7 +751,6 @@ dlg_menu(const char *title,
 		refresh();
 		dlg_mouse_free_regions();
 		goto retry;
-		break;
 #endif
 	    default:
 		flash();
@@ -717,6 +760,7 @@ dlg_menu(const char *title,
     }
 
     dlg_mouse_free_regions();
+    dlg_unregister_window(menu);
     dlg_del_window(dialog);
     free(prompt);
 
@@ -741,14 +785,17 @@ dialog_menu(const char *title,
     int i;
     DIALOG_LISTITEM *listitems;
 
-    listitems = calloc(item_no + 1, sizeof(*listitems));
+    listitems = dlg_calloc(DIALOG_LISTITEM, (size_t) item_no + 1);
     assert_ptr(listitems, "dialog_menu");
 
     for (i = 0; i < item_no; ++i) {
 	listitems[i].name = ItemName(i);
 	listitems[i].text = ItemText(i);
-	listitems[i].help = (dialog_vars.item_help) ? ItemHelp(i) : "";
+	listitems[i].help = ((dialog_vars.item_help)
+			     ? ItemHelp(i)
+			     : dlg_strempty());
     }
+    dlg_align_columns(&listitems[0].text, sizeof(DIALOG_LISTITEM), item_no);
 
     result = dlg_menu(title,
 		      cprompt,
@@ -758,8 +805,11 @@ dialog_menu(const char *title,
 		      item_no,
 		      listitems,
 		      &choice,
-		      dlg_renamed_menutext);
+		      (dialog_vars.input_menu
+		       ? dlg_renamed_menutext
+		       : dlg_dummy_menutext));
 
+    dlg_free_columns(&listitems[0].text, sizeof(DIALOG_LISTITEM), item_no);
     free(listitems);
     return result;
 }

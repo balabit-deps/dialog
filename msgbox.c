@@ -1,14 +1,13 @@
 /*
- *  $Id: msgbox.c,v 1.53 2005/12/07 00:01:04 tom Exp $
+ *  $Id: msgbox.c,v 1.68 2011/10/15 12:43:07 tom Exp $
  *
  *  msgbox.c -- implements the message box and info box
  *
- *  Copyright 2000-2004,2005	Thomas E. Dickey
+ *  Copyright 2000-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -29,86 +28,6 @@
 #include <dlg_keys.h>
 
 /*
- * Display the message in a scrollable window.  Actually the way it works is
- * that we create a "tall" window of the proper width, let the text wrap within
- * that, and copy a slice of the result to the dialog.
- *
- * It works for ncurses.  Other curses implementations show only blanks (Tru64)
- * or garbage (NetBSD).
- */
-static int
-show_message(WINDOW *dialog,
-	     const char *prompt,
-	     int offset,
-	     int page,
-	     int width,
-	     int pauseopt)
-{
-#ifdef NCURSES_VERSION
-    if (pauseopt) {
-	int wide = width - (2 * MARGIN);
-	int high = LINES;
-	int y, x;
-	int len;
-	int percent;
-	WINDOW *dummy;
-	char buffer[5];
-
-#if defined(NCURSES_VERSION_PATCH) && NCURSES_VERSION_PATCH >= 20040417
-	/*
-	 * If we're not limited by the screensize, allow text to possibly be
-	 * one character per line.
-	 */
-	if ((len = dlg_count_columns(prompt)) > high)
-	    high = len;
-#endif
-	dummy = newwin(high, width, 0, 0);
-	wbkgdset(dummy, dialog_attr | ' ');
-	wattrset(dummy, dialog_attr);
-	werase(dummy);
-	dlg_print_autowrap(dummy, prompt, high, width);
-	getyx(dummy, y, x);
-
-	copywin(dummy,		/* srcwin */
-		dialog,		/* dstwin */
-		offset + MARGIN,	/* sminrow */
-		MARGIN,		/* smincol */
-		MARGIN,		/* dminrow */
-		MARGIN,		/* dmincol */
-		page,		/* dmaxrow */
-		wide,		/* dmaxcol */
-		FALSE);
-
-	delwin(dummy);
-
-	/* if the text is incomplete, or we have scrolled, show the percentage */
-	if (y > 0 && wide > 4) {
-	    percent = ((page + offset) * 100.0 / y);
-	    if (percent < 0)
-		percent = 0;
-	    if (percent > 100)
-		percent = 100;
-	    if (offset != 0 || percent != 100) {
-		(void) wattrset(dialog, position_indicator_attr);
-		(void) wmove(dialog, MARGIN + page, wide - 4);
-		(void) sprintf(buffer, "%d%%", percent);
-		(void) waddstr(dialog, buffer);
-		if ((len = strlen(buffer)) < 4) {
-		    wattrset(dialog, border_attr);
-		    whline(dialog, ACS_HLINE, 4 - len);
-		}
-	    }
-	}
-	return (y - page);
-    }
-#endif
-    (void) offset;
-    wattrset(dialog, dialog_attr);
-    dlg_print_autowrap(dialog, prompt, page + 1 + (3 * MARGIN), width);
-    return 0;
-}
-
-/*
  * Display a message box. Program will pause and display an "OK" button
  * if the parameter 'pauseopt' is non-zero.
  */
@@ -118,24 +37,10 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
 {
     /* *INDENT-OFF* */
     static DLG_KEYS_BINDING binding[] = {
+	HELPKEY_BINDINGS,
 	ENTERKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_ENTER,	' ' ),
-	DLG_KEYS_DATA( DLGK_GRID_DOWN,	'J' ),
-	DLG_KEYS_DATA( DLGK_GRID_DOWN,	'j' ),
-	DLG_KEYS_DATA( DLGK_GRID_DOWN,	KEY_DOWN ),
-	DLG_KEYS_DATA( DLGK_GRID_UP,	'K' ),
-	DLG_KEYS_DATA( DLGK_GRID_UP,	'k' ),
-	DLG_KEYS_DATA( DLGK_GRID_UP,	KEY_UP ),
-	DLG_KEYS_DATA( DLGK_PAGE_FIRST,	'g' ),
-	DLG_KEYS_DATA( DLGK_PAGE_FIRST,	KEY_HOME ),
-	DLG_KEYS_DATA( DLGK_PAGE_LAST,	'G' ),
-	DLG_KEYS_DATA( DLGK_PAGE_LAST,	KEY_END ),
-	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	'F' ),
-	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	'f' ),
-	DLG_KEYS_DATA( DLGK_PAGE_NEXT,	KEY_NPAGE ),
-	DLG_KEYS_DATA( DLGK_PAGE_PREV,	'B' ),
-	DLG_KEYS_DATA( DLGK_PAGE_PREV,	'b' ),
-	DLG_KEYS_DATA( DLGK_PAGE_PREV,	KEY_PPAGE ),
+	SCROLLKEY_BINDINGS,
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT,	KEY_DOWN ),
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT, KEY_RIGHT ),
 	DLG_KEYS_DATA( DLGK_FIELD_NEXT, TAB ),
@@ -156,6 +61,7 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
     int offset = 0;
     int check;
     bool show = TRUE;
+    int min_width = (pauseopt == 1 ? 12 : 0);
 
 #ifdef KEY_RESIZE
     int req_high = height;
@@ -163,10 +69,12 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
   restart:
 #endif
 
+    dlg_button_layout(buttons, &min_width);
+
     dlg_tab_correct_str(prompt);
     dlg_auto_size(title, prompt, &height, &width,
 		  (pauseopt == 1 ? 2 : 0),
-		  (pauseopt == 1 ? 12 : 0));
+		  min_width);
     dlg_print_size(height, width);
     dlg_ctl_size(height, width);
 
@@ -174,11 +82,9 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
     y = dlg_box_y_ordinate(height);
 
 #ifdef KEY_RESIZE
-    if (dialog != 0) {
-	(void) wresize(dialog, height, width);
-	(void) mvwin(dialog, y, x);
-	(void) refresh();
-    } else
+    if (dialog != 0)
+	dlg_move_window(dialog, height, width, y, x);
+    else
 #endif
     {
 	dialog = dlg_new_window(height, width, y, x);
@@ -189,22 +95,22 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
 
     dlg_mouse_setbase(x, y);
 
-    dlg_draw_box(dialog, 0, 0, height, width, dialog_attr, border_attr);
+    dlg_draw_box2(dialog, 0, 0, height, width, dialog_attr, border_attr, border2_attr);
     dlg_draw_title(dialog, title);
 
     wattrset(dialog, dialog_attr);
 
     if (pauseopt) {
-	dlg_draw_bottom_box(dialog);
+	dlg_draw_bottom_box2(dialog, border_attr, border2_attr, dialog_attr);
 	mouse_mkbutton(height - 2, width / 2 - 4, 6, '\n');
 	dlg_draw_buttons(dialog, height - 2, 0, buttons, button, FALSE, width);
+	dlg_draw_helpline(dialog, FALSE);
 
 	while (result == DLG_EXIT_UNKNOWN) {
 	    if (show) {
-		getyx(dialog, y, x);
-		last = show_message(dialog, prompt, offset, page, width, pauseopt);
-		wmove(dialog, y, x);
-		wrefresh(dialog);
+		last = dlg_print_scrolled(dialog, prompt, offset,
+					  page, width, pauseopt);
+		dlg_trace_win(dialog);
 		show = FALSE;
 	    }
 	    key = dlg_mouse_wgetch(dialog, &fkey);
@@ -223,6 +129,7 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
 		    dlg_clear();
 		    height = req_high;
 		    width = req_wide;
+		    show = TRUE;
 		    goto restart;
 #endif
 		case DLGK_FIELD_NEXT:
@@ -246,46 +153,6 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
 		case DLGK_ENTER:
 		    result = button ? DLG_EXIT_HELP : DLG_EXIT_OK;
 		    break;
-		case DLGK_PAGE_FIRST:
-		    if (offset > 0) {
-			offset = 0;
-			show = TRUE;
-		    }
-		    break;
-		case DLGK_PAGE_LAST:
-		    if (offset < last) {
-			offset = last;
-			show = TRUE;
-		    }
-		    break;
-		case DLGK_GRID_UP:
-		    if (offset > 0) {
-			--offset;
-			show = TRUE;
-		    }
-		    break;
-		case DLGK_GRID_DOWN:
-		    if (offset < last) {
-			++offset;
-			show = TRUE;
-		    }
-		    break;
-		case DLGK_PAGE_PREV:
-		    if (offset > 0) {
-			offset -= page;
-			if (offset < 0)
-			    offset = 0;
-			show = TRUE;
-		    }
-		    break;
-		case DLGK_PAGE_NEXT:
-		    if (offset < last) {
-			offset += page;
-			if (offset > last)
-			    offset = last;
-			show = TRUE;
-		    }
-		    break;
 		case DLGK_MOUSE(0):
 		    result = DLG_EXIT_OK;
 		    break;
@@ -293,6 +160,12 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
 		    result = DLG_EXIT_HELP;
 		    break;
 		default:
+		    if (dlg_check_scrolled(key,
+					   last,
+					   page,
+					   &show,
+					   &offset) == 0)
+			break;
 		    beep();
 		    break;
 		}
@@ -301,8 +174,10 @@ dialog_msgbox(const char *title, const char *cprompt, int height, int width,
 	    }
 	}
     } else {
-	show_message(dialog, prompt, offset, page, width, pauseopt);
+	dlg_print_scrolled(dialog, prompt, offset, page, width, pauseopt);
+	dlg_draw_helpline(dialog, FALSE);
 	wrefresh(dialog);
+	dlg_trace_win(dialog);
 	result = DLG_EXIT_OK;
     }
 

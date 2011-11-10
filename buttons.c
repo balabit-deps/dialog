@@ -1,14 +1,13 @@
 /*
- *  $Id: buttons.c,v 1.68 2005/12/07 01:43:56 tom Exp $
+ *  $Id: buttons.c,v 1.87 2011/10/20 23:50:37 tom Exp $
  *
  *  buttons.c -- draw buttons, e.g., OK/Cancel
  *
- * Copyright 2000-2004,2005	Thomas E. Dickey
+ *  Copyright 2000-2010,2011	Thomas E. Dickey
  *
  *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU Lesser General Public License as
- *  published by the Free Software Foundation; either version 2.1 of the
- *  License, or (at your option) any later version.
+ *  it under the terms of the GNU Lesser General Public License, version 2.1
+ *  as published by the Free Software Foundation.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -24,6 +23,10 @@
 
 #include <dialog.h>
 #include <dlg_keys.h>
+
+#ifdef NEED_WCHAR_H
+#include <wchar.h>
+#endif
 
 #define MIN_BUTTON (dialog_state.visit_items ? -1 : 0)
 
@@ -55,25 +58,26 @@ string_to_char(const char **stringp)
     int result;
 #ifdef USE_WIDE_CURSES
     const char *string = *stringp;
-    int have = strlen(string);
-    int check;
-    int len;
-    wchar_t cmp2;
+    size_t have = strlen(string);
+    size_t check;
+    size_t len;
+    wchar_t cmp2[2];
     mbstate_t state;
 
     memset(&state, 0, sizeof(state));
     len = mbrlen(string, have, &state);
-    if (len > 0 && len <= have) {
+    if ((int) len > 0 && len <= have) {
 	memset(&state, 0, sizeof(state));
-	check = mbrtowc(&cmp2, string, len, &state);
-	if (check <= 0)
-	    cmp2 = 0;
+	memset(cmp2, 0, sizeof(cmp2));
+	check = mbrtowc(cmp2, string, len, &state);
+	if ((int) check <= 0)
+	    cmp2[0] = 0;
 	*stringp += len;
     } else {
-	cmp2 = UCH(*string);
+	cmp2[0] = UCH(*string);
 	*stringp += 1;
     }
-    result = cmp2;
+    result = cmp2[0];
 #else
     const char *string = *stringp;
     result = UCH(*string);
@@ -86,7 +90,7 @@ string_to_char(const char **stringp)
  * Print a button
  */
 static void
-print_button(WINDOW *win, const char *label, int y, int x, int selected)
+print_button(WINDOW *win, char *label, int y, int x, int selected)
 {
     int i;
     int state = 0;
@@ -100,11 +104,11 @@ print_button(WINDOW *win, const char *label, int y, int x, int selected)
 			 : button_label_inactive_attr);
 
     (void) wmove(win, y, x);
-    wattrset(win, selected
-	     ? button_active_attr
-	     : button_inactive_attr);
+    (void) wattrset(win, selected
+		    ? button_active_attr
+		    : button_inactive_attr);
     (void) waddstr(win, "<");
-    wattrset(win, label_attr);
+    (void) wattrset(win, label_attr);
     for (i = 0; i < limit; ++i) {
 	int first = indx[i];
 	int last = indx[i + 1];
@@ -116,14 +120,14 @@ print_button(WINDOW *win, const char *label, int y, int x, int selected)
 		const char *temp = (label + first);
 		int cmp = string_to_char(&temp);
 		if (dlg_isupper(cmp)) {
-		    wattrset(win, key_attr);
+		    (void) wattrset(win, key_attr);
 		    state = 1;
 		}
 		break;
 	    }
 #endif
 	    if (dlg_isupper(UCH(label[first]))) {
-		wattrset(win, key_attr);
+		(void) wattrset(win, key_attr);
 		state = 1;
 	    }
 	    break;
@@ -134,11 +138,11 @@ print_button(WINDOW *win, const char *label, int y, int x, int selected)
 	}
 	waddnstr(win, label + first, last - first);
     }
-    wattrset(win, selected
-	     ? button_active_attr
-	     : button_inactive_attr);
+    (void) wattrset(win, selected
+		    ? button_active_attr
+		    : button_inactive_attr);
     (void) waddstr(win, ">");
-    (void) wmove(win, y, x + strspn(label, " ") + 1);
+    (void) wmove(win, y, x + ((int) strspn(label, " ")) + 1);
 }
 
 /*
@@ -200,6 +204,8 @@ dlg_button_x_step(const char **labels, int limit, int *gap, int *margin, int *st
     int unused;
     int used;
 
+    if (count == 0)
+	return 0;
     dlg_button_sizes(labels, FALSE, &longest, &length);
     used = (length + (count * 2));
     unused = limit - used;
@@ -224,13 +230,15 @@ dlg_button_layout(const char **labels, int *limit)
     int width = 1;
     int gap, margin, step;
 
-    while (!dlg_button_x_step(labels, width, &gap, &margin, &step))
-	++width;
-    width += (4 * MARGIN);
-    if (width > COLS)
-	width = COLS;
-    if (width > *limit)
-	*limit = width;
+    if (labels != 0 && dlg_button_count(labels)) {
+	while (!dlg_button_x_step(labels, width, &gap, &margin, &step))
+	    ++width;
+	width += (4 * MARGIN);
+	if (width > COLS)
+	    width = COLS;
+	if (width > *limit)
+	    *limit = width;
+    }
 }
 
 /*
@@ -244,7 +252,7 @@ dlg_draw_buttons(WINDOW *win,
 		 int vertical,
 		 int limit)
 {
-    chtype save = getattrs(win);
+    chtype save = dlg_get_attrs(win);
     int n;
     int step = 0;
     int length;
@@ -253,7 +261,7 @@ dlg_draw_buttons(WINDOW *win,
     int final_y;
     int gap;
     int margin;
-    unsigned need;
+    size_t need;
     char *buffer;
 
     dlg_mouse_setbase(getbegx(win), getbegy(win));
@@ -273,11 +281,11 @@ dlg_draw_buttons(WINDOW *win,
     /*
      * Allocate a buffer big enough for any label.
      */
-    need = longest;
+    need = (size_t) longest;
     for (n = 0; labels[n] != 0; ++n) {
 	need += strlen(labels[n]) + 1;
     }
-    buffer = malloc(need);
+    buffer = dlg_malloc(char, need);
     assert_ptr(buffer, "dlg_draw_buttons");
 
     /*
@@ -302,7 +310,7 @@ dlg_draw_buttons(WINDOW *win,
     (void) wmove(win, final_y, final_x);
     wrefresh(win);
     free(buffer);
-    wattrset(win, save);
+    (void) wattrset(win, save);
 }
 
 /*
@@ -359,7 +367,7 @@ dlg_char_to_button(int ch, const char **labels)
     if (labels != 0) {
 	int j;
 
-	ch = dlg_toupper(dlg_last_getc());
+	ch = (int) dlg_toupper(dlg_last_getc());
 	for (j = 0; labels[j] != 0; ++j) {
 	    int cmp = dlg_button_to_char(labels[j]);
 	    if (ch == cmp) {
@@ -428,22 +436,29 @@ my_help_label(void)
 }
 
 /*
- * These functions return a list of button labels.
+ * Return a list of button labels.
  */
 const char **
 dlg_exit_label(void)
 {
     const char **result;
+    DIALOG_VARS save;
 
     if (dialog_vars.extra_button) {
+	dlg_save_vars(&save);
+	dialog_vars.nocancel = TRUE;
 	result = dlg_ok_labels();
+	dlg_restore_vars(&save);
     } else {
 	static const char *labels[3];
 	int n = 0;
 
-	labels[n++] = my_exit_label();
+	if (!dialog_vars.nook)
+	    labels[n++] = my_exit_label();
 	if (dialog_vars.help_button)
 	    labels[n++] = my_help_label();
+	if (n == 0)
+	    labels[n++] = my_exit_label();
 	labels[n] = 0;
 
 	result = labels;
@@ -452,20 +467,21 @@ dlg_exit_label(void)
 }
 
 /*
- * Map the given button index for dlg_exit_labels() into our exit-code.
+ * Map the given button index for dlg_exit_label() into our exit-code.
  */
 int
 dlg_exit_buttoncode(int button)
 {
-    int result = DLG_EXIT_ERROR;
+    int result;
+    DIALOG_VARS save;
 
-    if (dialog_vars.extra_button) {
-	result = dlg_ok_buttoncode(button);
-    } else if (button == 0) {
-	result = DLG_EXIT_OK;
-    } else if (button == 1 && dialog_vars.help_button) {
-	result = DLG_EXIT_HELP;
-    }
+    dlg_save_vars(&save);
+    dialog_vars.nocancel = TRUE;
+
+    result = dlg_ok_buttoncode(button);
+
+    dlg_restore_vars(&save);
+
     return result;
 }
 
@@ -491,7 +507,8 @@ dlg_ok_labels(void)
     static const char *labels[5];
     int n = 0;
 
-    labels[n++] = my_ok_label();
+    if (!dialog_vars.nook)
+	labels[n++] = my_ok_label();
     if (dialog_vars.extra_button)
 	labels[n++] = my_extra_label();
     if (!dialog_vars.nocancel)
@@ -509,9 +526,9 @@ int
 dlg_ok_buttoncode(int button)
 {
     int result = DLG_EXIT_ERROR;
-    int n = 1;
+    int n = !dialog_vars.nook;
 
-    if (button <= 0) {
+    if (!dialog_vars.nook && (button <= 0)) {
 	result = DLG_EXIT_OK;
     } else if (dialog_vars.extra_button && (button == n++)) {
 	result = DLG_EXIT_EXTRA;
