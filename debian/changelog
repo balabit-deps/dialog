@@ -1,3 +1,210 @@
+dialog (1.1-201110200-1.syslogng41.1) syslogngdeps30; urgency=low
+
+  * Switched to upstream 1.1-20111020
+
+ -- Tamas Pal <folti@balabit.com>  Thu, 10 Nov 2011 14:29:14 +0100
+
+dialog (1.1-201110200) unstable; urgency=low
+
+  * New upstream release.
+  * Fixes segfault in inputbox. Closes: #646072.
+
+ -- Santiago Vila <sanvila@debian.org>  Fri, 21 Oct 2011 11:00:08 +0200
+
+dialog (1.1-20111018-1) unstable; urgency=low
+
+  * New upstream release. Summary of changes fixing Debian bugs:
+  * dialog --fselect "" now scans the current directory (Closes: #640905).
+  * Added color table entries for secondary borders (Closes: #641168).
+  * Improved manpage regarding exit status (Closes: #642105).
+  * Added DLGK_FORM_PREV and DLGK_FORM_NEXT key-bindings to allow binding
+    a single key to traverse both form-fields and buttons. Added also a
+    suitable example to the manpage (Closes: #642108).
+
+ -- Santiago Vila <sanvila@debian.org>  Wed, 19 Oct 2011 10:31:22 +0200
+
+dialog (1.1-20110707-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Santiago Vila <sanvila@debian.org>  Sat, 09 Jul 2011 22:24:44 +0200
+
+dialog (1.1-20110630-1) unstable; urgency=low
+
+  * New upstream release.
+  * Fixed debian/copyright. Dialog as a whole is under LGPL 2.1
+    (without "or any later version"). Closes: #632198.
+
+ -- Santiago Vila <sanvila@debian.org>  Fri, 01 Jul 2011 18:23:50 +0200
+
+dialog (1.1-20110302-1) unstable; urgency=low
+
+  * New upstream release.
+  * Added --disable-rpath-hack to debian/rules configure call.
+  * Correct handling of SIGWINCH in gauge widget (Closes: #305705).
+  * Account for combining characters when wrapping text (Closes: #570634).
+
+ -- Santiago Vila <sanvila@debian.org>  Tue, 10 May 2011 17:39:00 +0200
+
+dialog (1.1-20100428-1) unstable; urgency=low
+
+  * New upstream release.
+  * Fixed debian/rules clean target: s/Makefile/makefile/.
+  * Fixed an infinite loop in dlg_button_layout(). Closes: #579390.
+
+ -- Santiago Vila <sanvila@debian.org>  Fri, 07 May 2010 20:25:48 +0200
+
+dialog (1.1-20100119-2) unstable; urgency=low
+
+  * Include support files required by sample scripts. Closes: #571064.
+  * Switch to 3.0 (quilt) source format (with 0 patches).
+  * Drop INSTALL_PROGRAM stuff from debian/rules, use appropriate strip
+    options for each object to be stripped.
+
+ -- Santiago Vila <sanvila@debian.org>  Tue, 23 Feb 2010 15:49:24 +0100
+
+dialog (1.1-20100119-1) unstable; urgency=low
+
+  * New upstream release.
+  * Added homepage field to control file.
+  * Do not ignore errors from make distclean (lintian warning).
+  * Removed .comment section from executable (lintian warning).
+  * Put dialog.pl in /usr/share/perl5 where it should be.
+
+ -- Santiago Vila <sanvila@debian.org>  Sun, 14 Feb 2010 14:11:40 +0100
+
+dialog (1.1-20080819-1) unstable; urgency=low
+
+  * New upstream release to address problem with deborphan.
+    The checklist widget, by default, no longer quotes its output
+    if --separate-output is used. Closes: #495600, #495725.
+
+ -- Santiago Vila <sanvila@debian.org>  Wed, 20 Aug 2008 11:45:16 +0200
+
+dialog (1.1-20080727-1) unstable; urgency=low
+
+  * New upstream release.
+  * Should fix bashisms in example scripts. Closes: #489563.
+
+ -- Santiago Vila <sanvila@debian.org>  Mon,  4 Aug 2008 12:27:26 +0200
+
+dialog (1.1-20080316-1) unstable; urgency=low
+
+  * New upstream release.
+  * Fixed segfault in formbox. Closes: #469190.
+
+ -- Santiago Vila <sanvila@debian.org>  Tue, 18 Mar 2008 19:45:10 +0100
+
+dialog (1.1-20071028-3) unstable; urgency=low
+
+  * Build with -fPIC. Required by gnunet. Closes: #457263. Note that
+    this is just a temporary workaround for Bug#454948. There will
+    be a shared library in the near future.
+  * Added Provides: libdialog-dev. Packages who build-depend on dialog
+    because of its library *must* now depend on libdialog-dev instead.
+  * Changed extended description to mention editor. Closes: #463234.
+
+ -- Santiago Vila <sanvila@debian.org>  Tue, 12 Feb 2008 16:52:52 +0100
+
+dialog (1.1-20071028-2) unstable; urgency=low
+
+  * Modified debian/rules to support cross compilation. Closes: #451147.
+
+ -- Santiago Vila <sanvila@debian.org>  Tue,  5 Feb 2008 13:30:06 +0100
+
+dialog (1.1-20071028-1) unstable; urgency=low
+
+  * New upstream release. No longer breaks some scripts. Closes: #443077.
+
+ -- Santiago Vila <sanvila@debian.org>  Mon,  5 Nov 2007 19:00:06 +0100
+
+dialog (1.1-20070930-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Santiago Vila <sanvila@debian.org>  Fri, 26 Oct 2007 07:47:36 +0200
+
+dialog (1.1-20070604-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Santiago Vila <sanvila@debian.org>  Tue,  5 Jun 2007 07:31:40 +0200
+
+dialog (1.1-20070528-1) unstable; urgency=low
+
+  * New upstream release. Should fix #423732 the right way.
+
+ -- Santiago Vila <sanvila@debian.org>  Mon, 28 May 2007 17:08:30 +0200
+
+dialog (1.1-20070514-1) unstable; urgency=low
+
+  * New upstream release.
+  * Fixed timeout regression (Closes: #418905).
+  * Fixed tailbox regression (Closes: #423732).
+
+ -- Santiago Vila <sanvila@debian.org>  Tue, 15 May 2007 14:11:00 +0200
+
+dialog (1.1-20070409-2) unstable; urgency=low
+
+  * Fixed behaviour of right arrow (Closes: #418917).
+    Patch by the author. Thanks to Daniel Lublin for the report.
+
+ -- Santiago Vila <sanvila@debian.org>  Sat, 21 Apr 2007 17:40:28 +0200
+
+dialog (1.1-20070409-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Santiago Vila <sanvila@debian.org>  Wed, 11 Apr 2007 10:56:56 +0200
+
+dialog (1.1-20070325-1) unstable; urgency=low
+
+  * New upstream release.
+  * Resizing of msgbox should now work (Closes: #415022).
+  * Fixed documentation regarding gauge and "XXX" string (Closes: #415596).
+
+ -- Santiago Vila <sanvila@debian.org>  Sun,  1 Apr 2007 14:23:12 +0200
+
+dialog (1.1-20070227-1) unstable; urgency=low
+
+  * New upstream release.
+  * Added option --editbox (Closes: #368478).
+  * Added option --keep-tite (Closes: #380665).
+  * Available soon: shared libraries (but not yet).
+
+ -- Santiago Vila <sanvila@debian.org>  Sun, 25 Mar 2007 15:00:10 +0200
+
+dialog (1.0-20060221-3) unstable; urgency=medium
+
+  * Fixed regression in pause box. Patch by the author. Closes: #409254.
+
+ -- Santiago Vila <sanvila@debian.org>  Fri,  2 Feb 2007 18:23:26 +0100
+
+dialog (1.0-20060221-2) unstable; urgency=medium
+
+  * Fixed regression in form box. Patch by the author. Closes: #404045.
+
+ -- Santiago Vila <sanvila@debian.org>  Mon,  1 Jan 2007 19:25:16 +0100
+
+dialog (1.0-20060221-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Santiago Vila <sanvila@debian.org>  Fri, 24 Feb 2006 19:07:04 +0100
+
+dialog (1.0-20060126-1) unstable; urgency=low
+
+  * New upstream release.
+  * Fixed normal menus, which didn't return the choice (Closes: #349969).
+
+ -- Santiago Vila <sanvila@debian.org>  Fri, 27 Jan 2006 17:26:12 +0100
+
+dialog (1.0-20060119-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Santiago Vila <sanvila@debian.org>  Sun, 22 Jan 2006 13:51:46 +0100
+
 dialog (1.0-20060101-10.syslogng41.1) syslogngdeps30; urgency=low
 
   * re-released for syslog-ng-deps-3.0
