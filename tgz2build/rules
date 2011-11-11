@@ -14,15 +14,14 @@ endif
 CONFIGURE_CMD=LDFLAGS="$(LDFLAGS_STATIC)" ./configure $(CONFIGURE_OPTS)
 
 ifneq (,$(findstring solaris,$(ZBS_DIST)))
-    LIBS="-Wl,-Bstatic -L/usr/local/lib -lncurses -Wl,-Bdynamic -L/usr/lib -lc"
-    CONFIGURE_CMD=LIBS=$(LIBS) ./configure $(CONFIGURE_OPTS)
+    CONFIGURE_CMD= CFLAGS="$(CFLAGS)" ./configure $(CONFIGURE_OPTS)
 
 ifneq (,$(filter amd64 sparc64,$(ZBS_ARCH)))
 	# ncurses and other dependencies are 32 bit libs on solaris, so we'll make
 	# 32 bit binaries and lie about it to avoid confusion - Folti
 	LDFLAGS_2=$(subst -m64 ,,$(LDFLAGS))
 	CFLAGS_2=$(subst -m64 ,,$(CFLAGS))
-	CONFIGURE_CMD=LIBS=$(LIBS) CFLAGS="$(CFLAGS_2)" LDFLAGS="$(LDFLAGS_2)" ./configure $(CONFIGURE_OPTS)
+	CONFIGURE_CMD=CFLAGS="$(CFLAGS_2)" LDFLAGS="$(LDFLAGS_2)" ./configure $(CONFIGURE_OPTS)
 endif
 endif
 
@@ -45,6 +44,11 @@ $(STAMPDIR)/stamp-setup:
 configure: $(STAMPDIR)/stamp-configure
 $(STAMPDIR)/stamp-configure: setup
 	$(CONFIGURE_CMD)
+	# force static linking on solaris.
+	if echo "$(ZBS_DIST)" | grep '^solaris-' 2>&1 >/dev/null; then \
+		sed -e 's%\(-L/usr/local/lib -lncurses\)%-Wl,-Bstatic \1 -Wl,-Bdynamic%' makefile > makefile2; \
+		mv makefile2 makefile;\
+	fi
 	touch $@
 
 build:  $(STAMPDIR)/stamp-build
