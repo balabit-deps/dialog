@@ -1,3 +1,9 @@
+dialog (1.1-201110200-1.syslogng51.1) syslogngdeps51; urgency=low
+
+  * released for syslog-ng-5.1
+
+ -- Laszlo Budai <lbudai@balabit.com>  Mon, 03 Mar 2014 09:58:14 +0100
+
 dialog (1.1-201110200-1.syslogng50.1) syslogngdeps50; urgency=low
 
   * released for syslog-ng-5.0
