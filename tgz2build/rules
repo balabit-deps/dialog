@@ -14,6 +14,9 @@ endif
 CONFIGURE_CMD=LDFLAGS="$(LDFLAGS_STATIC)" ./configure $(CONFIGURE_OPTS)
 
 ifneq (,$(findstring solaris,$(ZBS_DIST)))
+    ifneq (,$(findstring solaris-11,$(ZBS_DIST)))
+       CFLAGS+="-I/usr/include/ncurses"
+    endif
     CONFIGURE_CMD= CFLAGS="$(CFLAGS)" ./configure $(CONFIGURE_OPTS)
 
 ifneq (,$(filter amd64 sparc64,$(ZBS_ARCH)))
