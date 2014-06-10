@@ -1,3 +1,9 @@
+dialog (1.1-201110200-1.syslogng52.1) syslogng52; urgency=low
+
+  * released for syslog-ng-5.2
+
+ -- jviktor <jviktor@devel-57>  Tue, 10 Jun 2014 13:53:29 +0200
+
 dialog (1.1-201110200-1.syslogng51.1) syslogngdeps51; urgency=low
 
   * released for syslog-ng-5.1
