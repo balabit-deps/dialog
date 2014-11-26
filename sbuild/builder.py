@@ -1,4 +1,4 @@
-from BuilderBase import BuilderBase
+from DummyBuilder import DummyBuilder
 
 def get_builder():
-    return BuilderBase()
+    return DummyBuilder()
