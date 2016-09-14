@@ -16,3 +16,5 @@ gtk-doc.make
 *~
 sbuild.py
 sbuild/*.pyc
+!sbuild/config.yml
+sbuild
