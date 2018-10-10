@@ -132,6 +132,14 @@ CF_ARG_MSG_ENABLE([if you want extra dialogs],
 	[  --disable-extras        do not include extra dialogs],
 	[cf_all_widgets=yes],[cf_all_widgets=no],yes)
 
+AC_ARG_ENABLE(setlocale,
+              [  --enable-setlocale            Enable support for setlocale]
+              ,,enable_setlocale="yes")
+
+if test "x$enable_setlocale" = "xyes"; then
+  AC_DEFINE(USE_SETLOCALE, 1)
+fi
+
 CF_ARG_MSG_ENABLE([if you want config-file support],
 	rc-file,
 	[  --disable-rc-file       do not include config-file support],

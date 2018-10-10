@@ -29,7 +29,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#ifdef HAVE_SETLOCALE
+#ifdef USE_SETLOCALE
 #include <locale.h>
 #endif
 
@@ -1512,7 +1512,7 @@ main(int argc, char *argv[])
     setlocale(LC_ALL, "");
     bindtextdomain(NLS_TEXTDOMAIN, LOCALEDIR);
     textdomain(NLS_TEXTDOMAIN);
-#elif defined(HAVE_SETLOCALE)
+#elif defined(USE_SETLOCALE)
     (void) setlocale(LC_ALL, "");
 #endif
 

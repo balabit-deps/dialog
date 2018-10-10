@@ -26,7 +26,7 @@
 
 #include <errno.h>
 
-#ifdef HAVE_SETLOCALE
+#ifdef USE_SETLOCALE
 #include <locale.h>
 #endif
 
@@ -74,6 +74,7 @@ static int
 have_locale(void)
 {
     static int result = -1;
+#if USE_SETLOCALE
     if (result < 0) {
 	char *test = setlocale(LC_ALL, 0);
 	if (test == 0 || *test == 0) {
@@ -84,6 +85,10 @@ have_locale(void)
 	    result = FALSE;
 	}
     }
+#else
+    result = FALSE;
+#endif
+
     return result;
 }
 #endif
