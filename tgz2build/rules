@@ -1,7 +1,7 @@
 #!/usr/local/bin/make -f                                                                                                                                           
 STAMPDIR=tgz2build/stamps
 
-CONFIGURE_OPTS := --prefix=/dialog --with-ncurses --disable-xterm
+CONFIGURE_OPTS := --prefix=/dialog --with-ncurses --disable-xterm --disable-nls --disable-setlocale
 ifneq (,$(filter tru64-5.1b aix-6.1,$(ZBS_DIST)))
 CONFIGURE_OPTS := --prefix=/dialog --disable-xterm
 endif
