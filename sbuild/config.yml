@@ -15,3 +15,4 @@ platforms:
   - solaris-10/sparc64
   - solaris-11/amd64
   - solaris-11/sparc64
+  - ubuntu-bionic/amd64
