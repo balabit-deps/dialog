@@ -27,7 +27,7 @@
 #include <dialog.h>
 #include <dlg_keys.h>
 
-#ifdef HAVE_SETLOCALE
+#ifdef USE_SETLOCALE
 #include <locale.h>
 #endif
 
@@ -287,7 +287,9 @@ init_dialog(FILE *input, FILE *output)
     int fd1, fd2;
     char *device = 0;
 
+#ifdef USE_SETLOCALE
     setlocale(LC_ALL, "");
+#endif
 
     dialog_state.output = output;
     dialog_state.tab_len = TAB_LEN;
