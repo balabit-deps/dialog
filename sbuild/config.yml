@@ -4,14 +4,4 @@ builder:
   flags: "no-local-build no-configure no-make-dist"
 platforms:
   - aix-6.1/powerpc
-  - freebsd-10.1/amd64
-  - hpux-11v2/ia64
   - linux-glibc2.11/amd64
-  - linux-glibc2.11/i386
-  - linux-glibc2.3.6/amd64
-  - linux-glibc2.3.6/i386
-  - solaris-10/amd64
-  - solaris-10/sparc
-  - solaris-10/sparc64
-  - solaris-11/amd64
-  - solaris-11/sparc64
