@@ -6,7 +6,6 @@ ifneq (,$(filter tru64-5.1b aix-6.1,$(ZBS_DIST)))
 CONFIGURE_OPTS := --prefix=/dialog --disable-xterm
 endif
 
-LDFLAGS_STATIC=$(LDFLAGS) -static
 ifneq (,$(findstring aix-6.1,$(ZBS_DIST)))
 LDFLAGS_STATIC=$(LDFLAGS) -static-libgcc
 endif
@@ -47,10 +46,12 @@ $(STAMPDIR)/stamp-setup:
 configure: $(STAMPDIR)/stamp-configure
 $(STAMPDIR)/stamp-configure: setup
 	$(CONFIGURE_CMD)
-	# force static linking on solaris.
-	if echo "$(ZBS_DIST)" | grep '^solaris-' 2>&1 >/dev/null; then \
-		sed -e 's%\(-L/usr/local/lib -lncurses\)%-Wl,-Bstatic \1 -Wl,-Bdynamic%' makefile > makefile2; \
-		mv makefile2 makefile;\
+	# Force linking libc dynamically, while everything else is linked statically.
+	# Reason: libc can crash if it is linked statically, everything else must be linked statically,
+	# as we do not ship ncurses as a separate dependency.
+	if echo "$(ZBS_DIST)" | grep '^linux-glibc2.11' 2>&1 >/dev/null; then \
+		sed -e 's%\(-L/usr/lib -lncurses -lm\)%-Wl,-Bstatic \1 -Wl,-Bdynamic%' makefile > makefile2; \
+		mv makefile2 makefile; \
 	fi
 	touch $@
 
