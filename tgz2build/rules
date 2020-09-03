@@ -13,7 +13,7 @@ $(STAMPDIR)/stamp-setup:
 
 configure: $(STAMPDIR)/stamp-configure
 $(STAMPDIR)/stamp-configure: setup
-	./configure $(CONFIGURE_OPTS)
+	CFLAGS=-g ./configure $(CONFIGURE_OPTS)
 	# Force linking libc dynamically, while everything else is linked statically.
 	# Reason: libc can crash if it is linked statically, everything else must be linked statically,
 	# as we do not ship ncurses as a separate dependency.
