@@ -3,5 +3,4 @@ builder:
   name: BalabitBuilder
   flags: "no-local-build no-configure no-make-dist"
 platforms:
-  - aix-6.1/powerpc
   - linux-glibc2.11/amd64

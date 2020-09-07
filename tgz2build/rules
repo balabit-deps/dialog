@@ -1,42 +1,9 @@
-#!/usr/local/bin/make -f                                                                                                                                           
+#!/usr/local/bin/make -f
 STAMPDIR=tgz2build/stamps
 
 CONFIGURE_OPTS := --prefix=/dialog --with-ncurses --disable-xterm --disable-nls --disable-setlocale
-ifneq (,$(filter tru64-5.1b aix-6.1,$(ZBS_DIST)))
-CONFIGURE_OPTS := --prefix=/dialog --disable-xterm
-endif
-
-LDFLAGS_STATIC=$(LDFLAGS) -static
-ifneq (,$(findstring aix-6.1,$(ZBS_DIST)))
-LDFLAGS_STATIC=$(LDFLAGS) -static-libgcc
-endif
-
-CONFIGURE_CMD=LDFLAGS="$(LDFLAGS_STATIC)" ./configure $(CONFIGURE_OPTS)
-
-ifneq (,$(findstring solaris,$(ZBS_DIST)))
-    ifneq (,$(findstring solaris-11,$(ZBS_DIST)))
-       CFLAGS+="-I/usr/include/ncurses"
-    endif
-    CONFIGURE_CMD= CFLAGS="$(CFLAGS)" ./configure $(CONFIGURE_OPTS)
-
-ifneq (,$(filter amd64 sparc64,$(ZBS_ARCH)))
-	# ncurses and other dependencies are 32 bit libs on solaris, so we'll make
-	# 32 bit binaries and lie about it to avoid confusion - Folti
-	LDFLAGS_2=$(subst -m64 ,,$(LDFLAGS))
-	CFLAGS_2=$(subst -m64 ,,$(CFLAGS))
-	CONFIGURE_CMD=CFLAGS="$(CFLAGS_2)" LDFLAGS="$(LDFLAGS_2)" ./configure $(CONFIGURE_OPTS)
-endif
-endif
-
-ifneq (,$(findstring hpux-11v2,$(ZBS_DIST)))
-ifneq (,$(findstring ia64,$(ZBS_ARCH)))
-LDFLAGS+=-L/usr/local/lib/hpux32
-CONFIGURE_CMD=LDFLAGS="$(LDFLAGS)" ./configure $(CONFIGURE_OPTS)
-endif
-endif
 
 all: binary
-
 binary: setup configure build install
 
 setup:  $(STAMPDIR)/stamp-setup
@@ -46,32 +13,25 @@ $(STAMPDIR)/stamp-setup:
 
 configure: $(STAMPDIR)/stamp-configure
 $(STAMPDIR)/stamp-configure: setup
-	$(CONFIGURE_CMD)
-	# force static linking on solaris.
-	if echo "$(ZBS_DIST)" | grep '^solaris-' 2>&1 >/dev/null; then \
-		sed -e 's%\(-L/usr/local/lib -lncurses\)%-Wl,-Bstatic \1 -Wl,-Bdynamic%' makefile > makefile2; \
-		mv makefile2 makefile;\
-	fi
+	CFLAGS=-g ./configure $(CONFIGURE_OPTS)
+	# Force linking libc dynamically, while everything else is linked statically.
+	# Reason: libc can crash if it is linked statically, everything else must be linked statically,
+	# as we do not ship ncurses as a separate dependency.
+	sed -e 's%\(-L/usr/lib -lncurses -lm\)%-Wl,-Bstatic \1 -Wl,-Bdynamic%' makefile > makefile2
+	mv makefile2 makefile
 	touch $@
 
 build:  $(STAMPDIR)/stamp-build
 $(STAMPDIR)/stamp-build: configure
 	$(MAKE)
-	# gcc on hpux 11i v2 can't link statically. Have to do it by hand.
-	if test "$(ZBS_ARCH)" = "ia64" && test "$(ZBS_DIST)" = "hpux-11v2"; then \
-		gcc -I/opt/syslog-ng/include -o dialog dialog.o -L. -ldialog -L/opt/syslog-ng/lib -L/usr/local/lib/hpux32     /usr/lib/hpux32/libm.a /usr/local/lib/hpux32/libncurses.a; \
-	fi
 	touch $@
 
 install: $(STAMPDIR)/stamp-install
 $(STAMPDIR)/stamp-install: build
 	rm -rf $(ZBS_STAGE_DIR) || true
 	$(MAKE) install DESTDIR=$(ZBS_STAGE_DIR)
-	if test ! `uname` = "FreeBSD" ; then \
-		mkdir -p $(ZBS_STAGE_DIR)/dialog/terminfo ; \
-		cd terminfo && TERMINFO=$(ZBS_STAGE_DIR)/dialog/terminfo \
-			tic terminfo.src ; \
-	fi
+	mkdir -p $(ZBS_STAGE_DIR)/dialog/terminfo
+	cd terminfo && TERMINFO=$(ZBS_STAGE_DIR)/dialog/terminfo tic terminfo.src
 	touch $@
 clean:
 	rm -rf tgz2build/stamps || true

@@ -1,3 +1,9 @@
+dialog (1.1-1.syslogng70.0) syslogng70; urgency=low
+
+ * hybrid linking
+
+ -- Attila Szakacs <attila.szakacs@oneidentity.com>  Thu, 03 Sep 2020 14:19:06 +0200
+
 dialog (1.1-201110200-2.syslogng53.2) syslogng53; urgency=low
 
   * release for syslog-ng-5.3.0alpha2
