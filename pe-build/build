@@ -1,0 +1,25 @@
+source="dialog"
+version="1.1.1-pe-1"
+dependencies=(
+ 'libncurses'
+)
+
+build() {
+  cd "${build_dir}"
+  ${src_dir}/configure --prefix=/dialog --with-ncursesw --disable-xterm --disable-nls --disable-setlocale --with-curses="${prefix}"
+
+  # Force linking libc dynamically, while everything else is linked statically.
+  # Reason: libc can crash if it is linked statically, everything else must be linked statically,
+  # as we do not ship ncurses as a separate dependency.
+  sed -e 's%\(-lncursesw\)%-Wl,-Bstatic \1 -Wl,-Bdynamic%' makefile > makefile2
+  mv makefile2 makefile
+
+  make
+}
+
+install() {
+  make -C "${build_dir}" DESTDIR="${dest_dir}" install
+
+  mkdir -p ${dest_dir}/dialog/terminfo
+  cd terminfo && TERMINFO=${dest_dir}/dialog/terminfo tic terminfo.src
+}
